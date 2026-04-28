@@ -1178,20 +1178,14 @@ elif menu == "변경사항 확인":
         "시간변경여부", "강의실변경여부", "변경상태",
     ]
 
-    def _highlight_cell(v):
-        text = str(v)
-        if text in {"시간 변경", "강의실 변경", "시간+강의실 변경"}:
-            return "background-color: #1f2937; color: #ffffff; font-weight: 800;"
-        return ""
-
-    styled_ch = (
-        df_ch[cols]
-        .style
-        .applymap(_highlight_cell, subset=["시간변경여부"])
-        .applymap(_highlight_cell, subset=["강의실변경여부"])
-        .applymap(_highlight_cell, subset=["변경상태"])
+    view_ch = df_ch[cols].copy()
+    st.markdown(
+        dataframe_to_html_table(
+            view_ch,
+            highlight_cols=["시간변경여부", "강의실변경여부", "변경상태"],
+        ),
+        unsafe_allow_html=True,
     )
-    st.dataframe(styled_ch, use_container_width=True, hide_index=True)
 
     st.download_button(
         "변경사항 CSV 다운로드",
