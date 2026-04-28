@@ -872,6 +872,20 @@ def render_calendar_grid(df_student: pd.DataFrame, target_week: int):
     st.markdown(table_html, unsafe_allow_html=True)
 
 
+def render_room_calendar_fallback(exam_df_src: pd.DataFrame, room_no: int, key_prefix: str):
+    room_df = exam_df_src[exam_df_src["강의실목록"].apply(lambda xs: room_no in set(xs))].copy()
+    room_df = room_df.sort_values(["주차", "start_dt", "과목명"]).reset_index(drop=True)
+    week_choice = st.radio(
+        f"{room_no}호 주차 선택",
+        ["7주차", "8주차", "9주차"],
+        horizontal=True,
+        key=f"{key_prefix}_week",
+    )
+    wk = int(str(week_choice).replace("주차", ""))
+    st.markdown(f"##### 강의실 {room_no} | {wk}주차")
+    st.markdown(build_calendar_html(room_df, wk), unsafe_allow_html=True)
+
+
 def student_summary_cards(df_student: pd.DataFrame):
     def _card_html(a: str, b: str, c: str, d: str, e: str) -> str:
         cards = [
@@ -1082,7 +1096,8 @@ if menu == "학번별 조회":
             if selected_room_path_student is not None and selected_room_path_student.exists():
                 st.image(str(selected_room_path_student), use_container_width=True)
             else:
-                st.info("강의실 시각화 파일이 없어 자동생성 시도를 했지만 표시할 파일이 없습니다.")
+                st.warning("강의실 PNG 파일이 없어 화면 캘린더로 표시합니다.")
+                render_room_calendar_fallback(exam_df, int(room_choice_student), "student_room_fallback")
 
             # 해석 문구
             total_n = len(df_student)
@@ -1230,7 +1245,8 @@ elif menu == "최적화 결과":
             st.markdown(f"##### 강의실 {room_choice} 시각화")
             st.image(str(selected_room_path), use_container_width=True)
         else:
-            st.info("선택한 강의실 시각화 파일이 아직 없습니다.")
+            st.warning("선택한 강의실 PNG 파일이 없어 화면 캘린더로 표시합니다.")
+            render_room_calendar_fallback(exam_df, int(room_choice), "opt_room_fallback")
 
         if report_dir is not None:
             pdf_path = report_dir / "결과_발표링크용.pdf"
