@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import html
 import json
 import re
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -114,6 +115,32 @@ st.markdown(
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 10px 12px;
+    }
+    .big-summary-row {
+      display:grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap:10px;
+      margin: 6px 0 12px 0;
+    }
+    .big-summary-card {
+      border:1px solid #cbd5e1;
+      border-radius:12px;
+      background:#ffffff;
+      padding:10px 12px;
+      min-height:84px;
+    }
+    .big-summary-title {
+      font-size:13px;
+      font-weight:700;
+      color:#334155 !important;
+    }
+    .big-summary-value {
+      margin-top:6px;
+      font-size:22px;
+      font-weight:800;
+      color:#0b1220 !important;
+      line-height:1.2;
+      word-break:keep-all;
     }
     .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px;}
     .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:6px; vertical-align:top; height:52px;}
@@ -683,6 +710,58 @@ def load_report_images() -> tuple[list[Path], Path | None]:
     return images, report_dir
 
 
+def generate_fallback_report_images(exam_df: pd.DataFrame, summary: dict, out_dir: Path) -> None:
+    """리포트 png가 없을 때 최소 시각화 파일을 자동 생성한다."""
+    try:
+        import matplotlib.pyplot as plt
+    except Exception:
+        return
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # summary image
+    summary_img = out_dir / "page_00_summary.png"
+    fig = plt.figure(figsize=(10, 4))
+    fig.patch.set_facecolor("white")
+    lines = [
+        "Optimization Summary",
+        f"Objective: {float(summary.get('objective', 0)):.4f}",
+        f"RoomMoveSum: {int(summary.get('room_move_sum', 0))}",
+        f"TimeMoveSum: {int(summary.get('time_move_sum', 0))}",
+        f"DailyPenaltySum: {int(summary.get('daily_penalty_sum', 0))}",
+        f"OverlapViolation: {int(summary.get('overlap_violation', 0))}",
+        f"SectionConsecutiveViolation: {int(summary.get('section_overlap_violation', 0))}",
+    ]
+    fig.text(0.05, 0.9, "\n".join(lines), fontsize=14, va="top")
+    fig.savefig(summary_img, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    # room images
+    for room in ROOM_ORDER:
+        room_img = out_dir / f"page_room_{room}.png"
+        room_df = exam_df[exam_df["강의실목록"].apply(lambda xs: int(room) in set(xs))].copy()
+        room_df = room_df.sort_values(["주차", "요일번호", "시작슬롯"])
+        fig = plt.figure(figsize=(12, 6))
+        fig.patch.set_facecolor("white")
+        title = f"ROOM {room} Exam Timetable (Week 7/8/9)"
+        fig.text(0.03, 0.95, title, fontsize=16, weight="bold", va="top")
+        if room_df.empty:
+            fig.text(0.03, 0.80, "No assigned exams.", fontsize=13)
+        else:
+            y = 0.88
+            for _, r in room_df.iterrows():
+                line = (
+                    f"{int(r['주차'])}주차 {r['요일']} {r['시작']}~{r['종료']}  |  "
+                    f"{r['과목명']} ({int(r['시험시간(분)'])}분)"
+                )
+                fig.text(0.03, y, line, fontsize=11, va="top")
+                y -= 0.03
+                if y < 0.05:
+                    break
+        fig.savefig(room_img, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+
 def build_optimization_summary_df(payload: dict) -> pd.DataFrame:
     summary = payload.get("summary", {})
     rows = [
@@ -794,13 +873,27 @@ def render_calendar_grid(df_student: pd.DataFrame, target_week: int):
 
 
 def student_summary_cards(df_student: pd.DataFrame):
+    def _card_html(a: str, b: str, c: str, d: str, e: str) -> str:
+        cards = [
+            ("내 시험 개수", a),
+            ("첫 시험", b),
+            ("마지막 시험", c),
+            ("하루 최대 시험 수", d),
+            ("연속 시험 여부", e),
+        ]
+        parts = ["<div class='big-summary-row'>"]
+        for title, val in cards:
+            parts.append(
+                "<div class='big-summary-card'>"
+                f"<div class='big-summary-title'>{html.escape(title)}</div>"
+                f"<div class='big-summary-value'>{html.escape(val)}</div>"
+                "</div>"
+            )
+        parts.append("</div>")
+        return "".join(parts)
+
     if df_student.empty:
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("내 시험 개수", 0)
-        c2.metric("첫 시험", "-")
-        c3.metric("마지막 시험", "-")
-        c4.metric("하루 최대 시험 수", 0)
-        c5.metric("연속 시험 여부", "없음")
+        st.markdown(_card_html("0", "-", "-", "0", "없음"), unsafe_allow_html=True)
         return
 
     count_exam = len(df_student)
@@ -817,12 +910,16 @@ def student_summary_cards(df_student: pd.DataFrame):
             consecutive = True
             break
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("내 시험 개수", count_exam)
-    c2.metric("첫 시험", first_exam.strftime("%m/%d %H:%M"))
-    c3.metric("마지막 시험", last_exam.strftime("%m/%d %H:%M"))
-    c4.metric("하루 최대 시험 수", max_per_day)
-    c5.metric("연속 시험 여부", "있음" if consecutive else "없음")
+    st.markdown(
+        _card_html(
+            str(count_exam),
+            first_exam.strftime("%m/%d %H:%M"),
+            last_exam.strftime("%m/%d %H:%M"),
+            str(max_per_day),
+            "있음" if consecutive else "없음",
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 # -------------------------------------------------
@@ -851,6 +948,11 @@ opt_summary_df = build_optimization_summary_df(payload)
 verify_df = build_verify_df(payload)
 decision_df = build_decision_df(payload, exam_df)
 report_images, report_dir = load_report_images()
+if report_dir is None:
+    report_dir = BASE_DIR / "결과_리포트"
+if not report_images:
+    generate_fallback_report_images(exam_df, payload.get("summary", {}), report_dir)
+    report_images, report_dir = load_report_images()
 
 summary = payload.get("summary", {})
 
@@ -968,6 +1070,19 @@ if menu == "학번별 조회":
                 file_name=f"student_{sid}_calendar.html",
                 mime="text/html",
             )
+
+            st.markdown("#### 시각화 파일")
+            room_choice_student = st.selectbox(
+                "강의실 선택(학번별 조회)",
+                [str(r) for r in ROOM_ORDER],
+                index=0,
+                key="student_room_select",
+            )
+            selected_room_path_student = report_dir / f"page_room_{room_choice_student}.png" if report_dir is not None else None
+            if selected_room_path_student is not None and selected_room_path_student.exists():
+                st.image(str(selected_room_path_student), use_container_width=True)
+            else:
+                st.info("강의실 시각화 파일이 없어 자동생성 시도를 했지만 표시할 파일이 없습니다.")
 
             # 해석 문구
             total_n = len(df_student)
