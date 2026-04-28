@@ -1096,7 +1096,6 @@ if menu == "학번별 조회":
             if selected_room_path_student is not None and selected_room_path_student.exists():
                 st.image(str(selected_room_path_student), use_container_width=True)
             else:
-                st.warning("강의실 PNG 파일이 없어 화면 캘린더로 표시합니다.")
                 render_room_calendar_fallback(exam_df, int(room_choice_student), "student_room_fallback")
 
             # 해석 문구
@@ -1179,12 +1178,20 @@ elif menu == "변경사항 확인":
         "시간변경여부", "강의실변경여부", "변경상태",
     ]
 
-    def highlight_change(row):
-        if row["변경상태"] == "유지":
-            return [""] * len(row)
-        return ["background-color: #1f2937; color: #ffffff; font-weight: 700;"] * len(row)
+    def _highlight_cell(v):
+        text = str(v)
+        if text in {"시간 변경", "강의실 변경", "시간+강의실 변경"}:
+            return "background-color: #1f2937; color: #ffffff; font-weight: 800;"
+        return ""
 
-    st.dataframe(df_ch[cols].style.apply(highlight_change, axis=1), use_container_width=True, hide_index=True)
+    styled_ch = (
+        df_ch[cols]
+        .style
+        .applymap(_highlight_cell, subset=["시간변경여부"])
+        .applymap(_highlight_cell, subset=["강의실변경여부"])
+        .applymap(_highlight_cell, subset=["변경상태"])
+    )
+    st.dataframe(styled_ch, use_container_width=True, hide_index=True)
 
     st.download_button(
         "변경사항 CSV 다운로드",
@@ -1245,7 +1252,6 @@ elif menu == "최적화 결과":
             st.markdown(f"##### 강의실 {room_choice} 시각화")
             st.image(str(selected_room_path), use_container_width=True)
         else:
-            st.warning("선택한 강의실 PNG 파일이 없어 화면 캘린더로 표시합니다.")
             render_room_calendar_fallback(exam_df, int(room_choice), "opt_room_fallback")
 
         if report_dir is not None:
