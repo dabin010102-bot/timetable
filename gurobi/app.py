@@ -1381,24 +1381,55 @@ elif menu == "전체 시간표":
     st.subheader("시험 이동 시뮬레이터")
     st.caption("과목을 임의 이동했을 때 가능/불가, 영향 인원, 목적함수 변화, 대안 추천을 즉시 확인합니다.")
 
-    sim_courses = exam_df[["시험인덱스", "과목명", "주차", "요일", "시작", "강의실"]].copy()
-    sim_courses["표시"] = sim_courses.apply(
-        lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {int(r['주차'])}주차 {r['요일']} {r['시작']} | 강의실 {r['강의실']}",
-        axis=1,
+    sim_courses = exam_df[["시험인덱스", "과목명", "주차", "요일", "요일번호", "시작", "시작슬롯", "종료", "강의실", "시험시간(분)"]].copy()
+    sim_courses = sim_courses.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    if sim_courses.empty:
+        st.warning("시뮬레이터 대상 과목이 없습니다.")
+        st.stop()
+
+    sim_week_view = st.radio("시뮬레이터 주차 보기", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
+    sim_week_num = int(sim_week_view.replace("주차", ""))
+    st.markdown(build_calendar_html(exam_df, sim_week_num), unsafe_allow_html=True)
+
+    st.markdown("#### 시간표 블록 선택(클릭)")
+    week_courses = sim_courses[sim_courses["주차"] == sim_week_num].copy()
+    if "sim_selected_idx" not in st.session_state:
+        st.session_state.sim_selected_idx = int(week_courses.iloc[0]["시험인덱스"]) if not week_courses.empty else int(sim_courses.iloc[0]["시험인덱스"])
+    for _, rr in week_courses.iterrows():
+        c_left, c_right = st.columns([8, 1])
+        with c_left:
+            st.markdown(
+                f"- `[{int(rr['시험인덱스'])}]` **{rr['과목명']}** | {rr['요일']} {rr['시작']}-{rr['종료']} | 강의실 {rr['강의실']}"
+            )
+        with c_right:
+            if st.button("선택", key=f"sim_pick_{int(rr['시험인덱스'])}"):
+                st.session_state.sim_selected_idx = int(rr["시험인덱스"])
+
+    sel_idx = int(st.session_state.sim_selected_idx)
+    sel_df = sim_courses[sim_courses["시험인덱스"] == sel_idx]
+    if sel_df.empty:
+        sel_idx = int(sim_courses.iloc[0]["시험인덱스"])
+        st.session_state.sim_selected_idx = sel_idx
+        sel_df = sim_courses[sim_courses["시험인덱스"] == sel_idx]
+    sel_row = sel_df.iloc[0]
+    st.success(
+        f"선택 과목: [{sel_idx}] {sel_row['과목명']} | {int(sel_row['주차'])}주차 {sel_row['요일']} {sel_row['시작']}-{sel_row['종료']} | 강의실 {sel_row['강의실']}"
     )
-    sel_label = st.selectbox("이동할 과목 선택", sim_courses["표시"].tolist(), key="sim_exam_select")
-    sel_row = sim_courses[sim_courses["표시"] == sel_label].iloc[0]
-    sel_idx = int(sel_row["시험인덱스"])
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        sim_week = st.selectbox("주차", [7, 8, 9], key="sim_week")
+        sim_week = st.selectbox("이동할 주차", [7, 8, 9], index=[7, 8, 9].index(int(sel_row["주차"])), key="sim_week")
     with c2:
-        sim_day_label = st.selectbox("요일", ["월", "화", "수", "목", "금"], key="sim_day")
+        sim_day_label = st.selectbox("이동할 요일", ["월", "화", "수", "목", "금"], index=["월", "화", "수", "목", "금"].index(str(sel_row["요일"])), key="sim_day")
     with c3:
-        sim_start = st.number_input("시작 슬롯(30분)", min_value=0, max_value=18, value=int(exam_df.loc[exam_df["시험인덱스"] == sel_idx, "시작슬롯"].iloc[0]), step=1, key="sim_start")
+        time_opts = [slot_to_time(s) for s in range(0, 19)]
+        default_time = slot_to_time(int(sel_row["시작슬롯"]))
+        sim_start_time = st.selectbox("이동할 시작시간", time_opts, index=time_opts.index(default_time), key="sim_start_time")
     with c4:
-        sim_room = st.selectbox("강의실", [int(r) for r in ROOM_ORDER], key="sim_room")
+        cur_room = int(str(sel_row["강의실"]).split()[0])
+        room_list = [int(r) for r in ROOM_ORDER]
+        room_idx = room_list.index(cur_room) if cur_room in room_list else 0
+        sim_room = st.selectbox("이동할 강의실", room_list, index=room_idx, key="sim_room")
 
     if st.button("이동 영향 계산", key="sim_eval_btn"):
         student_sets = build_exam_student_sets(exam_df, df_is)
@@ -1408,7 +1439,7 @@ elif menu == "전체 시간표":
             target_idx=sel_idx,
             new_week=int(sim_week),
             new_day=int(sim_day_no),
-            new_start=int(sim_start),
+            new_start=int((int(sim_start_time.split(":")[0]) * 60 + int(sim_start_time.split(":")[1]) - 540) / 30),
             new_room=int(sim_room),
             student_sets=student_sets,
             summary=summary,
