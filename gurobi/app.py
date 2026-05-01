@@ -911,6 +911,95 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int) -> str:
     return table_html
 
 
+def build_feasible_area_html(
+    exam_df: pd.DataFrame,
+    target_idx: int,
+    target_week: int,
+    target_room: int,
+    student_sets: dict[int, set[int]],
+    summary: dict,
+) -> tuple[str, list[dict]]:
+    time_rows = [slot_to_time(s) for s in range(0, 22)]
+    table = {t: {d: "" for d in DAY_ORDER} for t in time_rows}
+    df_w = exam_df[exam_df["주차"] == target_week].copy()
+
+    # 기존 배정(연파랑)
+    for _, r in df_w.iterrows():
+        day = str(r.get("요일", ""))
+        if day not in DAY_ORDER:
+            continue
+        s0 = int(r.get("시작슬롯", 0))
+        s1 = int(r.get("종료슬롯", s0))
+        show_course = r.get("과목명", r.get("과목", ""))
+        grade_txt = str(r.get("학년", "-"))
+        for s in range(s0, s1):
+            tlabel = slot_to_time(s)
+            if s == s0:
+                table[tlabel][day] = f"<div class='course'>{show_course}</div><div>{grade_txt}학년</div>"
+            else:
+                table[tlabel][day] = "<div class='cont'></div>"
+
+    # 가능 영역(초록)
+    feasible_rows: list[dict] = []
+    day_labels = ["월", "화", "수", "목", "금"]
+    duration_slots = int(
+        float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
+        - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
+    )
+    for d in day_labels:
+        dnum = DAY_KO_TO_NUM[d]
+        for st_slot in range(0, 19):
+            out = score_move_impact(
+                exam_df=exam_df,
+                target_idx=int(target_idx),
+                new_week=int(target_week),
+                new_day=int(dnum),
+                new_start=int(st_slot),
+                new_room=int(target_room),
+                student_sets=student_sets,
+                summary=summary,
+            )
+            if not out.get("feasible", False):
+                continue
+            feasible_rows.append(
+                {
+                    "요일": d,
+                    "시작": slot_to_time(st_slot),
+                    "종료": slot_to_time(st_slot + duration_slots),
+                    "강의실": int(target_room),
+                    "영향학생수": int(out["affected_students"]),
+                    "하루3개증가": int(out["daily3_increase"]),
+                    "하루4개증가": int(out["daily4_increase"]),
+                    "목적함수변화": float(out["objective_delta"]),
+                }
+            )
+            for s in range(st_slot, st_slot + duration_slots):
+                tlabel = slot_to_time(s)
+                if tlabel not in table:
+                    continue
+                if table[tlabel][d]:
+                    continue
+                table[tlabel][d] = "<div style='background:#dcfce7;color:#14532d;font-weight:800;border-radius:6px;padding:2px 4px;'>가능</div>"
+
+    html_rows = []
+    for t in time_rows:
+        cells = [f"<td class='time-col'>{t}</td>"]
+        for d in DAY_ORDER:
+            val = table[t][d]
+            cls = "exam" if val else "empty"
+            cells.append(f"<td class='{cls}'>{val}</td>")
+        html_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    table_html = (
+        "<div class='calendar-wrap'><table><thead><tr><th>시간</th>"
+        + "".join(f"<th>{d}</th>" for d in DAY_ORDER)
+        + "</tr></thead><tbody>"
+        + "".join(html_rows)
+        + "</tbody></table></div>"
+    )
+    return table_html, feasible_rows
+
+
 def load_report_images() -> tuple[list[Path], Path | None]:
     report_dir = find_existing_dir(REPORT_DIR_CANDIDATES)
     if report_dir is None:
@@ -1379,7 +1468,7 @@ elif menu == "전체 시간표":
 
     st.markdown("---")
     st.subheader("시험 이동 시뮬레이터")
-    st.caption("과목을 임의 이동했을 때 가능/불가, 영향 인원, 목적함수 변화, 대안 추천을 즉시 확인합니다.")
+    st.caption("블록 선택 후 가능한 영역(초록)을 확인하고, 후보를 선택해 영향 요약을 확인합니다.")
 
     sim_courses = exam_df[["시험인덱스", "과목명", "주차", "요일", "요일번호", "시작", "시작슬롯", "종료", "강의실", "시험시간(분)"]].copy()
     sim_courses = sim_courses.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
@@ -1399,7 +1488,7 @@ elif menu == "전체 시간표":
         c_left, c_right = st.columns([8, 1])
         with c_left:
             st.markdown(
-                f"- `[{int(rr['시험인덱스'])}]` **{rr['과목명']}** | {rr['요일']} {rr['시작']}-{rr['종료']} | 강의실 {rr['강의실']}"
+                f"- `[{int(rr['시험인덱스'])}]` **{rr['과목명']}** ({rr['학년']}학년) | {rr['요일']} {rr['시작']}-{rr['종료']} | 강의실 {rr['강의실']}"
             )
         with c_right:
             if st.button("선택", key=f"sim_pick_{int(rr['시험인덱스'])}"):
@@ -1413,7 +1502,7 @@ elif menu == "전체 시간표":
         sel_df = sim_courses[sim_courses["시험인덱스"] == sel_idx]
     sel_row = sel_df.iloc[0]
     st.success(
-        f"선택 과목: [{sel_idx}] {sel_row['과목명']} | {int(sel_row['주차'])}주차 {sel_row['요일']} {sel_row['시작']}-{sel_row['종료']} | 강의실 {sel_row['강의실']}"
+        f"선택 과목: [{sel_idx}] {sel_row['과목명']} ({sel_row['학년']}학년) | {int(sel_row['주차'])}주차 {sel_row['요일']} {sel_row['시작']}-{sel_row['종료']} | 강의실 {sel_row['강의실']}"
     )
 
     c1, c2, c3, c4 = st.columns(4)
@@ -1431,8 +1520,37 @@ elif menu == "전체 시간표":
         room_idx = room_list.index(cur_room) if cur_room in room_list else 0
         sim_room = st.selectbox("이동할 강의실", room_list, index=room_idx, key="sim_room")
 
+    student_sets = build_exam_student_sets(exam_df, df_is)
+    st.markdown("#### 가능 영역(초록)")
+    feasible_html, feasible_rows = build_feasible_area_html(
+        exam_df=exam_df,
+        target_idx=sel_idx,
+        target_week=int(sim_week),
+        target_room=int(sim_room),
+        student_sets=student_sets,
+        summary=summary,
+    )
+    st.markdown(feasible_html, unsafe_allow_html=True)
+
+    if feasible_rows:
+        fdf = pd.DataFrame(feasible_rows).sort_values(["요일", "시작"])
+        fdf["목적함수변화"] = fdf["목적함수변화"].map(lambda x: f"{x:+.4f}")
+        st.markdown("#### 가능 후보(클릭 선택)")
+        candidate_label = fdf.apply(
+            lambda r: f"{r['요일']} {r['시작']}~{r['종료']} | 강의실 {r['강의실']} | 목적함수 {r['목적함수변화']}",
+            axis=1,
+        ).tolist()
+        picked = st.selectbox("후보 선택", candidate_label, key="sim_candidate_pick")
+        picked_row = fdf.iloc[candidate_label.index(picked)]
+        sim_day_label = str(picked_row["요일"])
+        sim_start_time = str(picked_row["시작"])
+    else:
+        st.warning("현재 주차/강의실에서 가능한 이동 위치가 없습니다. 강의실 또는 주차를 바꿔보세요.")
+
     if st.button("이동 영향 계산", key="sim_eval_btn"):
-        student_sets = build_exam_student_sets(exam_df, df_is)
+        if not feasible_rows:
+            st.error("가능한 후보가 없어 계산할 수 없습니다.")
+            st.stop()
         sim_day_no = DAY_KO_TO_NUM[sim_day_label]
         out = score_move_impact(
             exam_df=exam_df,
