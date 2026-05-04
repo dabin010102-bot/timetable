@@ -1470,7 +1470,7 @@ elif menu == "전체 시간표":
     st.subheader("시험 이동 시뮬레이터")
     st.caption("블록 선택 후 가능한 영역(초록)을 확인하고, 후보를 선택해 영향 요약을 확인합니다.")
 
-    sim_courses = exam_df[["시험인덱스", "과목명", "주차", "요일", "요일번호", "시작", "시작슬롯", "종료", "강의실", "시험시간(분)"]].copy()
+    sim_courses = exam_df[["시험인덱스", "과목명", "학년", "주차", "요일", "요일번호", "시작", "시작슬롯", "종료", "강의실", "시험시간(분)"]].copy()
     sim_courses = sim_courses.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     if sim_courses.empty:
         st.warning("시뮬레이터 대상 과목이 없습니다.")
@@ -1550,53 +1550,53 @@ elif menu == "전체 시간표":
     if st.button("이동 영향 계산", key="sim_eval_btn"):
         if not feasible_rows:
             st.error("가능한 후보가 없어 계산할 수 없습니다.")
-            st.stop()
-        sim_day_no = DAY_KO_TO_NUM[sim_day_label]
-        out = score_move_impact(
-            exam_df=exam_df,
-            target_idx=sel_idx,
-            new_week=int(sim_week),
-            new_day=int(sim_day_no),
-            new_start=int((int(sim_start_time.split(":")[0]) * 60 + int(sim_start_time.split(":")[1]) - 540) / 30),
-            new_room=int(sim_room),
-            student_sets=student_sets,
-            summary=summary,
-        )
-        if out.get("feasible", False):
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("영향 학생 수", int(out["affected_students"]))
-            m2.metric("하루 3개 이상 증가", int(out["daily3_increase"]))
-            m3.metric("하루 4개 이상 증가", int(out["daily4_increase"]))
-            m4.metric("목적함수 변화", f"{float(out['objective_delta']):+.4f}")
-            st.markdown(
-                f"- 시간이동 변화: `{int(out['time_move_delta']):+d}`\n"
-                f"- 강의실변경 변화: `{int(out['room_change_delta']):+d}`\n"
-                f"- 목적함수: `{float(out['objective_before']):.4f} → {float(out['objective_after']):.4f}`"
-            )
         else:
-            st.error(f"불가: {out.get('reason', '제약 위반')}")
-            if out.get("room_conflicts"):
-                st.caption("강의실 중복 과목 예시: " + ", ".join(out["room_conflicts"]))
+            sim_day_no = DAY_KO_TO_NUM[sim_day_label]
+            out = score_move_impact(
+                exam_df=exam_df,
+                target_idx=sel_idx,
+                new_week=int(sim_week),
+                new_day=int(sim_day_no),
+                new_start=int((int(sim_start_time.split(":")[0]) * 60 + int(sim_start_time.split(":")[1]) - 540) / 30),
+                new_room=int(sim_room),
+                student_sets=student_sets,
+                summary=summary,
+            )
+            if out.get("feasible", False):
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("영향 학생 수", int(out["affected_students"]))
+                m2.metric("하루 3개 이상 증가", int(out["daily3_increase"]))
+                m3.metric("하루 4개 이상 증가", int(out["daily4_increase"]))
+                m4.metric("목적함수 변화", f"{float(out['objective_delta']):+.4f}")
+                st.markdown(
+                    f"- 시간이동 변화: `{int(out['time_move_delta']):+d}`\n"
+                    f"- 강의실변경 변화: `{int(out['room_change_delta']):+d}`\n"
+                    f"- 목적함수: `{float(out['objective_before']):.4f} → {float(out['objective_after']):.4f}`"
+                )
+            else:
+                st.error(f"불가: {out.get('reason', '제약 위반')}")
+                if out.get("room_conflicts"):
+                    st.caption("강의실 중복 과목 예시: " + ", ".join(out["room_conflicts"]))
 
-            alts = recommend_move_alternatives(exam_df, sel_idx, student_sets, summary, topn=3)
-            if alts:
-                st.markdown("#### 대안 3개 추천")
-                alt_rows = []
-                for i, a in enumerate(alts, start=1):
-                    alt_rows.append(
-                        {
-                            "안": f"{i}안",
-                            "주차": f"{a['week']}주차",
-                            "요일": DAY_LABELS.get(int(a["day"]), str(a["day"])),
-                            "시작": slot_to_time(int(a["start"])),
-                            "강의실": int(a["room"]),
-                            "특징": a["tag"],
-                            "목적함수변화": f"{float(a['objective_delta']):+.4f}",
-                            "3개이상증가": int(a["daily3_increase"]),
-                            "4개이상증가": int(a["daily4_increase"]),
-                        }
-                    )
-                st.dataframe(pd.DataFrame(alt_rows), use_container_width=True, hide_index=True)
+                alts = recommend_move_alternatives(exam_df, sel_idx, student_sets, summary, topn=3)
+                if alts:
+                    st.markdown("#### 대안 3개 추천")
+                    alt_rows = []
+                    for i, a in enumerate(alts, start=1):
+                        alt_rows.append(
+                            {
+                                "안": f"{i}안",
+                                "주차": f"{a['week']}주차",
+                                "요일": DAY_LABELS.get(int(a["day"]), str(a["day"])),
+                                "시작": slot_to_time(int(a["start"])),
+                                "강의실": int(a["room"]),
+                                "특징": a["tag"],
+                                "목적함수변화": f"{float(a['objective_delta']):+.4f}",
+                                "3개이상증가": int(a["daily3_increase"]),
+                                "4개이상증가": int(a["daily4_increase"]),
+                            }
+                        )
+                    st.dataframe(pd.DataFrame(alt_rows), use_container_width=True, hide_index=True)
 
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
