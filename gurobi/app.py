@@ -946,8 +946,9 @@ def build_feasible_area_html(
             else:
                 table[tlabel][day] = "<div class='cont'></div>"
 
-    # 가능 영역(초록)
+    # 가능 영역(초록) + 목적함수 변화 요약 텍스트
     feasible_rows: list[dict] = []
+    cell_delta: dict[tuple[str, str], float] = {}
     day_labels = ["월", "화", "수", "목", "금"]
     duration_slots = int(
         float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
@@ -980,13 +981,23 @@ def build_feasible_area_html(
                     "목적함수변화": float(out["objective_delta"]),
                 }
             )
+            cell_delta[(d, slot_to_time(st_slot))] = float(out["objective_delta"])
             for s in range(st_slot, st_slot + duration_slots):
                 tlabel = slot_to_time(s)
                 if tlabel not in table:
                     continue
                 if table[tlabel][d]:
                     continue
-                table[tlabel][d] = "<div style='background:#dcfce7;color:#14532d;font-weight:800;border-radius:6px;padding:2px 4px;'>가능</div>"
+                if s == st_slot:
+                    dlt = float(cell_delta.get((d, slot_to_time(st_slot)), 0.0))
+                    table[tlabel][d] = (
+                        "<div style='background:#dcfce7;color:#14532d;font-weight:800;border-radius:6px;padding:2px 4px;'>"
+                        f"가능<br>Δ {dlt:+.2f}</div>"
+                    )
+                else:
+                    table[tlabel][d] = (
+                        "<div style='background:#dcfce7;color:#14532d;font-weight:700;border-radius:6px;padding:2px 4px;'>·</div>"
+                    )
 
     html_rows = []
     for t in time_rows:
