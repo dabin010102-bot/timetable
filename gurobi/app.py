@@ -149,6 +149,67 @@ st.markdown(
     .calendar-wrap .exam {background:var(--accent-bg); color:var(--accent-text);}
     .calendar-wrap .course {font-weight:800; margin-bottom:2px; font-size:13px; color:var(--accent-text);}
     .calendar-wrap .empty {background:#ffffff;}
+    .click-grid-head {
+      display:grid;
+      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
+      border-top:1px solid #cfd8e3;
+      border-left:1px solid #cfd8e3;
+      background:#dbe7f9;
+      font-weight:800;
+      text-align:center;
+    }
+    .click-grid-row {
+      display:grid;
+      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
+      border-left:1px solid #cfd8e3;
+    }
+    .click-grid-cell, .click-grid-time {
+      min-height:54px;
+      border-right:1px solid #cfd8e3;
+      border-bottom:1px solid #cfd8e3;
+      padding:4px;
+      background:#ffffff;
+      font-size:12px;
+    }
+    .click-grid-time {
+      background:#f3f7fc;
+      text-align:center;
+      font-weight:800;
+      padding-top:14px;
+    }
+    .click-grid-exam {
+      background:#dbeafe;
+      border:1px solid #bfdbfe;
+      border-radius:6px;
+      padding:5px;
+      line-height:1.25;
+      font-weight:700;
+      color:#0b1220 !important;
+      min-height:42px;
+    }
+    .click-grid-possible {
+      background:#dcfce7;
+      border:1px solid #86efac;
+      border-radius:6px;
+      padding:5px;
+      line-height:1.25;
+      font-weight:800;
+      color:#14532d !important;
+      text-align:center;
+      min-height:42px;
+    }
+    .click-grid-cont {
+      background:#eff6ff;
+      border-radius:4px;
+      min-height:42px;
+    }
+    div[data-testid="stButton"] button[kind="secondary"] {
+      white-space: pre-line !important;
+      min-height:44px !important;
+      width:100% !important;
+      line-height:1.15 !important;
+      padding:5px 6px !important;
+    }
     .result-table-wrap {overflow-x:auto; margin-top:10px;}
     .result-table {width:100%; border-collapse:collapse; font-size:14px; background:#ffffff;}
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
@@ -1236,36 +1297,38 @@ def render_clickable_calendar(
         for s in range(s0 + 1, s1):
             cont.add((day, slot_to_time(s)))
 
-    header = st.columns([0.8, 1, 1, 1, 1, 1])
-    header[0].markdown("**시간**")
-    for idx, d in enumerate(DAY_ORDER, start=1):
-        header[idx].markdown(f"**{d}**")
+    st.markdown(
+        "<div class='click-grid-head'><div class='click-grid-cell'>시간</div>"
+        + "".join(f"<div class='click-grid-cell'>{d}</div>" for d in DAY_ORDER)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
     for slot in range(0, 22):
         time_label = slot_to_time(slot)
         cols = st.columns([0.8, 1, 1, 1, 1, 1])
-        cols[0].markdown(f"`{time_label}`")
+        cols[0].markdown(f"<div class='click-grid-time'>{time_label}</div>", unsafe_allow_html=True)
         for idx, day in enumerate(DAY_ORDER, start=1):
             key = (day, time_label)
-            if key in starts:
+            if key in feasible_map:
+                delta = float(feasible_map[key]["목적함수변화"])
+                cols[idx].markdown(
+                    "<div class='click-grid-possible'>"
+                    f"가능<br>Δ {delta:+.2f}<br>"
+                    f"{int(feasible_map[key]['영향학생수'])}명 영향</div>",
+                    unsafe_allow_html=True,
+                )
+            elif key in starts:
                 r = starts[key]
                 exam_idx = int(r["시험인덱스"])
                 label = f"{r['과목명']}\n{r['시작']}~{r['종료']}\n{r['강의실']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
                     st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
-            elif key in feasible_map:
-                delta = float(feasible_map[key]["목적함수변화"])
-                cols[idx].markdown(
-                    "<div style='background:#dcfce7;color:#14532d;border:1px solid #86efac;"
-                    "border-radius:6px;padding:6px;text-align:center;font-weight:800;'>"
-                    f"가능<br>Δ {delta:+.2f}</div>",
-                    unsafe_allow_html=True,
-                )
             elif key in cont:
-                cols[idx].markdown("<div style='background:#dbeafe;height:34px;border-radius:4px;'></div>", unsafe_allow_html=True)
+                cols[idx].markdown("<div class='click-grid-cont'></div>", unsafe_allow_html=True)
             else:
-                cols[idx].markdown("<div style='height:34px;'></div>", unsafe_allow_html=True)
+                cols[idx].markdown("<div class='click-grid-cell'></div>", unsafe_allow_html=True)
 
 
 def render_room_calendar_fallback(exam_df_src: pd.DataFrame, room_no: int, key_prefix: str):
@@ -1691,16 +1754,24 @@ elif menu == "전체 시간표":
                     student_sets=student_sets,
                     summary=summary,
                 )
-                if out.get("feasible", False):
-                    st.success("가능한 이동입니다.")
-                    st.markdown(
-                        f"- 영향 학생 수: `{int(out['affected_students'])}`\n"
-                        f"- 하루 3개 이상 증가: `{int(out['daily3_increase'])}`\n"
-                        f"- 하루 4개 이상 증가: `{int(out['daily4_increase'])}`\n"
-                        f"- 목적함수 변화: `{float(out['objective_delta']):+.4f}`"
-                    )
+                if st.button("이동안 평가", key="sim_eval_btn"):
+                    if out.get("feasible", False):
+                        st.success("가능한 이동입니다.")
+                        st.markdown(
+                            f"- 선택 과목 수강학생: `{int(out['affected_students'])}`명\n"
+                            f"- 시간변경 합 변화: `{int(out['time_move_delta']):+d}`\n"
+                            f"- 강의실변경 합 변화: `{int(out['room_change_delta']):+d}`\n"
+                            f"- 하루 3개 이상 학생-일 증가: `{int(out['daily3_increase']):+d}`\n"
+                            f"- 하루 4개 이상 학생-일 증가: `{int(out['daily4_increase']):+d}`\n"
+                            f"- 목적함수: `{float(out['objective_before']):.4f}` → `{float(out['objective_after']):.4f}`\n"
+                            f"- 목적함수 변화: `{float(out['objective_delta']):+.4f}`"
+                        )
+                    else:
+                        st.error(f"불가능: {out.get('reason', '제약 위반')}")
+                elif out.get("feasible", False):
+                    st.caption(f"현재 입력은 이동 가능 후보입니다. 예상 Δ목적함수 {float(out['objective_delta']):+.4f}")
                 else:
-                    st.error(f"불가능: {out.get('reason', '제약 위반')}")
+                    st.warning(f"현재 입력은 불가능합니다: {out.get('reason', '제약 위반')}")
 
     with left_col:
         grid_week = int(sim_week) if selected_ok else sim_week_num
