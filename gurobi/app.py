@@ -1473,10 +1473,28 @@ elif menu == "전체 시간표":
         mime="text/csv",
     )
 
+    st.markdown("#### 시각화(강의실/학년)")
+    vz1, vz2 = st.columns(2)
+    with vz1:
+        viz_room = st.selectbox("시각화 강의실", [str(r) for r in ROOM_ORDER], key="overall_viz_room")
+    with vz2:
+        viz_grade = st.selectbox("시각화 학년", ["전체"] + sorted(exam_df["학년"].astype(str).unique().tolist()), key="overall_viz_grade")
+
+    selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
+    if viz_grade == "전체" and selected_room_path_overall is not None and selected_room_path_overall.exists():
+        st.image(str(selected_room_path_overall), use_container_width=True)
+    else:
+        viz_week = st.radio("시각화 주차", ["7주차", "8주차", "9주차"], horizontal=True, key="overall_viz_week")
+        viz_week_num = int(viz_week.replace("주차", ""))
+        viz_df = exam_df[exam_df["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))].copy()
+        if viz_grade != "전체":
+            viz_df = viz_df[viz_df["학년"].astype(str) == str(viz_grade)]
+        st.markdown(build_calendar_html(viz_df, viz_week_num), unsafe_allow_html=True)
+
     st.markdown("---")
     st.caption("전체 시간표 블록을 클릭하면 이동 설정 창이 열립니다.")
 
-    sim_week_view = st.radio("시각화 주차", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
+    sim_week_view = st.radio("이동 대상 주차", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
     sim_week_num = int(sim_week_view.replace("주차", ""))
 
     # 전체 시각화(필터 반영 + 블록 클릭 선택)
@@ -1518,24 +1536,24 @@ elif menu == "전체 시간표":
                 st.success(
                     f"선택 과목: [{sel_idx}] {sel_row['과목명']} ({sel_row['학년']}학년) | {int(sel_row['주차'])}주차 {sel_row['요일']} {sel_row['시작']}-{sel_row['종료']} | 강의실 {sel_row['강의실']}"
                 )
-
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    sim_week = st.selectbox("이동할 주차", [7, 8, 9], index=[7, 8, 9].index(int(sel_row["주차"])), key="sim_week")
-                with c2:
-                    sim_day_label = st.selectbox("이동할 요일", ["월", "화", "수", "목", "금"], index=["월", "화", "수", "목", "금"].index(str(sel_row["요일"])), key="sim_day")
-                with c3:
-                    time_opts = [slot_to_time(s) for s in range(0, 19)]
-                    default_time = slot_to_time(int(sel_row["시작슬롯"]))
-                    sim_start_time = st.selectbox("이동할 시작시간", time_opts, index=time_opts.index(default_time), key="sim_start_time")
-                with c4:
-                    cur_room = int(str(sel_row["강의실"]).split()[0])
-                    room_list = [int(r) for r in ROOM_ORDER]
-                    room_idx = room_list.index(cur_room) if cur_room in room_list else 0
-                    sim_room = st.selectbox("이동할 강의실", room_list, index=room_idx, key="sim_room")
+                left_col, right_col = st.columns([7, 5])
+                with right_col:
+                    c1, c2, c3, c4 = st.columns(2)
+                    with c1:
+                        sim_week = st.selectbox("이동 주차", [7, 8, 9], index=[7, 8, 9].index(int(sel_row["주차"])), key="sim_week")
+                    with c2:
+                        sim_day_label = st.selectbox("이동 요일", ["월", "화", "수", "목", "금"], index=["월", "화", "수", "목", "금"].index(str(sel_row["요일"])), key="sim_day")
+                    with c3:
+                        time_opts = [slot_to_time(s) for s in range(0, 19)]
+                        default_time = slot_to_time(int(sel_row["시작슬롯"]))
+                        sim_start_time = st.selectbox("이동 시작시간", time_opts, index=time_opts.index(default_time), key="sim_start_time")
+                    with c4:
+                        cur_room = int(str(sel_row["강의실"]).split()[0])
+                        room_list = [int(r) for r in ROOM_ORDER]
+                        room_idx = room_list.index(cur_room) if cur_room in room_list else 0
+                        sim_room = st.selectbox("이동 강의실", room_list, index=room_idx, key="sim_room")
 
                 student_sets = build_exam_student_sets(exam_df, df_is)
-                st.markdown("#### 가능 영역(초록)")
                 feasible_html, feasible_rows = build_feasible_area_html(
                     exam_df=exam_df,
                     target_idx=sel_idx,
@@ -1544,7 +1562,9 @@ elif menu == "전체 시간표":
                     student_sets=student_sets,
                     summary=summary,
                 )
-                st.markdown(feasible_html, unsafe_allow_html=True)
+                with left_col:
+                    st.markdown("#### 가능 영역(초록)")
+                    st.markdown(feasible_html, unsafe_allow_html=True)
 
                 if feasible_rows:
                     fdf = pd.DataFrame(feasible_rows).sort_values(["요일", "시작"])
@@ -1666,42 +1686,12 @@ elif menu == "최적화 결과":
         mime="text/csv",
     )
 
-    if "show_opt_viz" not in st.session_state:
-        st.session_state.show_opt_viz = False
-
-    if st.button("시각화 보기", key="show_opt_viz_button"):
-        st.session_state.show_opt_viz = True
-
-    if st.session_state.show_opt_viz:
-        st.markdown("#### Matplotlib 시각화")
-        room_choice = st.selectbox(
-            "강의실 선택",
-            [str(r) for r in ROOM_ORDER],
-            index=0,
-            key="opt_room_select",
-        )
-        selected_room_path = report_dir / f"page_room_{room_choice}.png" if report_dir is not None else None
-        summary_path = report_dir / "page_00_summary.png" if report_dir is not None else None
-
-        if summary_path is not None and summary_path.exists():
-            st.markdown("##### 요약 시각화")
-            st.image(str(summary_path), use_container_width=True)
-
-        if selected_room_path is not None and selected_room_path.exists():
-            st.markdown(f"##### 강의실 {room_choice} 시각화")
-            st.image(str(selected_room_path), use_container_width=True)
-        else:
-            render_room_calendar_fallback(exam_df, int(room_choice), "opt_room_fallback")
-
-        if report_dir is not None:
-            pdf_path = report_dir / "결과_발표링크용.pdf"
-            html_path = report_dir / "report.html"
-            if pdf_path.exists():
-                st.download_button(
-                    "발표용 PDF 다운로드",
-                    data=pdf_path.read_bytes(),
-                    file_name=pdf_path.name,
-                    mime="application/pdf",
-                )
-            if html_path.exists():
-                st.caption(f"리포트 HTML: {html_path}")
+    if report_dir is not None:
+        pdf_path = report_dir / "결과_발표링크용.pdf"
+        if pdf_path.exists():
+            st.download_button(
+                "발표용 PDF 다운로드",
+                data=pdf_path.read_bytes(),
+                file_name=pdf_path.name,
+                mime="application/pdf",
+            )
