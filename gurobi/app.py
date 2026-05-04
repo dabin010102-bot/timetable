@@ -868,7 +868,7 @@ def add_change_columns_student(
     return out
 
 
-def build_calendar_html(df_student: pd.DataFrame, target_week: int) -> str:
+def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: bool = False) -> str:
     time_rows = [slot_to_time(s) for s in range(0, 22)]
     table = {t: {d: "" for d in DAY_ORDER} for t in time_rows}
     df_w = df_student[df_student["주차"] == target_week].copy()
@@ -885,6 +885,13 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int) -> str:
         room_txt = str(r.get("강의실", "-"))
         dur_txt = str(r.get("시험시간(분)", ""))
         text_main = f"<div class='course'>{show_course}</div><div>{start_txt}~{end_txt}</div><div>{dur_txt}분 · 강의실 {room_txt}</div>"
+        if clickable and "시험인덱스" in r:
+            idx_val = int(r.get("시험인덱스", -1))
+            text_main = (
+                f"<a href='?pick={idx_val}&week={target_week}' "
+                "style='text-decoration:none;color:inherit;display:block;'>"
+                f"{text_main}</a>"
+            )
         for s in range(s0, s1):
             tlabel = slot_to_time(s)
             if s == s0:
@@ -1420,7 +1427,7 @@ if menu == "학번별 조회":
 
 
 elif menu == "전체 시간표":
-    st.subheader("전체 최적화 시험시간표")
+    st.subheader("전체 시간표")
 
     col1, col2, col3 = st.columns(3)
     course_options = ["전체"] + sorted(exam_df["과목명"].unique().tolist())
@@ -1467,31 +1474,40 @@ elif menu == "전체 시간표":
     )
 
     st.markdown("---")
-    st.subheader("시험 이동 시뮬레이터")
-    st.caption("전체 시각화에서 블록을 선택하면 이동창이 열리고, 그 상태에서만 가능영역(초록)과 영향 요약을 표시합니다.")
+    st.caption("전체 시간표 블록을 클릭하면 이동 설정 창이 열립니다.")
 
     sim_week_view = st.radio("시각화 주차", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
     sim_week_num = int(sim_week_view.replace("주차", ""))
 
-    # 전체 시각화(필터 반영)
+    # 전체 시각화(필터 반영 + 블록 클릭 선택)
     calendar_src = df_all.copy() if not df_all.empty else exam_df.copy()
-    st.markdown(build_calendar_html(calendar_src, sim_week_num), unsafe_allow_html=True)
+    st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
 
     sim_courses = calendar_src[["시험인덱스", "과목명", "학년", "주차", "요일", "요일번호", "시작", "시작슬롯", "종료", "강의실", "시험시간(분)"]].copy()
     sim_courses = sim_courses.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-    week_courses = sim_courses[sim_courses["주차"] == sim_week_num].copy()
 
-    st.markdown("#### 블록 선택")
     if "sim_selected_idx" not in st.session_state:
         st.session_state.sim_selected_idx = None
 
-    if week_courses.empty:
-        st.info("현재 필터/주차에 표시할 블록이 없습니다.")
-    else:
-        for _, rr in week_courses.iterrows():
-            label = f"[{int(rr['시험인덱스'])}] {rr['과목명']} ({rr['학년']}학년) | {rr['요일']} {rr['시작']}-{rr['종료']} | 강의실 {rr['강의실']}"
-            if st.button(label, key=f"sim_pick_{sim_week_num}_{int(rr['시험인덱스'])}"):
-                st.session_state.sim_selected_idx = int(rr["시험인덱스"])
+    picked_q = None
+    try:
+        if hasattr(st, "query_params"):
+            picked_q = st.query_params.get("pick")
+            if isinstance(picked_q, list):
+                picked_q = picked_q[0] if picked_q else None
+    except Exception:
+        pass
+    if picked_q is None:
+        try:
+            qp = st.experimental_get_query_params()
+            picked_q = qp.get("pick", [None])[0]
+        except Exception:
+            picked_q = None
+    if picked_q is not None:
+        try:
+            st.session_state.sim_selected_idx = int(str(picked_q))
+        except Exception:
+            pass
 
     if st.session_state.sim_selected_idx is not None:
         sel_idx = int(st.session_state.sim_selected_idx)
