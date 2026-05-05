@@ -235,6 +235,17 @@ st.markdown(
       text-align:center;
       min-height:42px;
     }
+    .click-grid-selected-move {
+      background:#dbeafe;
+      border:2px solid #2563eb;
+      border-radius:6px;
+      padding:5px;
+      line-height:1.25;
+      font-weight:900;
+      color:#1e3a8a !important;
+      text-align:center;
+      min-height:42px;
+    }
     .click-grid-cont {
       background:#eff6ff;
       border-radius:4px;
@@ -1847,6 +1858,7 @@ elif menu == "전체 시간표":
 
     left_col, right_col = st.columns([8, 4])
     feasible_rows: list[dict] = []
+    selected_candidate: dict | None = None
 
     with right_col:
         st.markdown("#### 선택 및 이동 후보")
@@ -1952,7 +1964,7 @@ elif menu == "전체 시간표":
         if week_count == 0:
             st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
         else:
-            render_clickable_calendar(calendar_src, sim_week_num, "overall_calendar", feasible_rows=feasible_rows)
+            render_clickable_calendar(calendar_src, sim_week_num, "overall_calendar", feasible_rows=feasible_rows, selected_candidate=selected_candidate)
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
