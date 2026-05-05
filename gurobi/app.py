@@ -312,6 +312,28 @@ COURSE_NAME_KO = {
     "SmartMfg&Auto": "스마트제조자동화",
 }
 
+# 학년 파일이 없거나 매칭이 실패해도 화면에서 학년이 비지 않도록 하는 기본값
+COURSE_GRADE_FALLBACK = {
+    "Calculus(1)": "3",
+    "IntroIE&M": "3",
+    "GenAIApps": "3",
+    "Database": "3",
+    "Det.ManageSci": "3",
+    "Ergonomics": "3",
+    "Prob&Stats(1)": "3",
+    "ProdDevProcess": "3",
+    "QualityEng": "5",
+    "ReinforcLearn": "3",
+    "SmartLogistics": "3",
+    "DataMining": "3",
+    "ErgoExpEval": "3",
+    "IntroFinEng": "3",
+    "Optim&Apps": "3",
+    "ProdControl": "3",
+    "Corp&Safety": "3",
+    "SmartMfg&Auto": "3",
+}
+
 
 # -------------------------------------------------
 # 유틸
@@ -349,6 +371,21 @@ def to_korean_course_name(course: str) -> str:
         if normalize_name(eng) == normalize_name(base_key):
             return f"{kor}{section}"
     return raw
+
+
+def fallback_grade_for_course(course: str) -> str:
+    base_key = re.sub(r"[-_]\d+$", "", str(course or "").strip())
+    for key, grade in COURSE_GRADE_FALLBACK.items():
+        if normalize_name(key) == normalize_name(base_key):
+            return str(grade)
+    return "-"
+
+
+def format_grade_label(value) -> str:
+    text = str(value or "").strip()
+    if not text or text == "-" or text.lower() == "nan":
+        return "-"
+    return text if "학년" in text else f"{text}학년"
 
 
 def find_existing_path(candidates: list[str], prefer_latest: bool = False) -> Path | None:
@@ -981,14 +1018,14 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
         s0 = int(r.get("시작슬롯", 0))
         s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
         show_course = r.get("과목명", r.get("과목", ""))
-        grade_txt = str(r.get("학년", "-"))
+        grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", show_course))))
         start_txt = str(r.get("시작", ""))
         end_txt = str(r.get("종료", ""))
         room_txt = str(r.get("강의실", "-"))
         dur_txt = str(r.get("시험시간(분)", ""))
         text_main = (
             "<div class='exam-block'>"
-            f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}학년</span></div>"
+            f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}</span></div>"
             f"<div>{start_txt}~{end_txt} · {dur_txt}분</div>"
             f"<div class='room-line'>강의실 {room_txt}</div>"
             "</div>"
@@ -1290,7 +1327,8 @@ def fill_missing_grade(df: pd.DataFrame, grade_map: dict[str, str]) -> pd.DataFr
         key = str(row.get("정규과목", "")).strip()
         if not key:
             key = normalize_name(row.get("과목", ""))
-        filled.append(grade_map.get(key, "-"))
+        fallback = fallback_grade_for_course(row.get("과목", row.get("과목명", key)))
+        filled.append(grade_map.get(key, fallback))
     out["학년"] = filled
     return out
 
@@ -1482,6 +1520,50 @@ def make_student_calendar_png(df_student: pd.DataFrame, sid: str) -> bytes | Non
     return buf.getvalue()
 
 
+def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
+    """학생 개인 시험 일정을 휴대폰/Google Calendar에 넣을 수 있는 ICS 파일로 만든다."""
+    def esc(text) -> str:
+        return str(text or "").replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+
+    now = datetime.now().strftime("%Y%m%dT%H%M%S")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//INUTimetable//Exam Timetable//KO",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:INUTimetable {esc(sid)} 시험시간표",
+    ]
+
+    for _, r in df_student.sort_values(["start_dt", "과목명"]).iterrows():
+        start = pd.to_datetime(r["start_dt"]).strftime("%Y%m%dT%H%M%S")
+        end = pd.to_datetime(r["end_dt"]).strftime("%Y%m%dT%H%M%S")
+        course = esc(r.get("과목명", r.get("과목", "")))
+        room = esc(r.get("강의실", "-"))
+        week = esc(r.get("주차", "-"))
+        uid = f"inutimetable-{sid}-{int(r.get('시험인덱스', 0))}@inu"
+        desc = esc(
+            f"{week}주차 {r.get('요일', '')} {r.get('시작', '')}~{r.get('종료', '')} / "
+            f"강의실 {room} / {r.get('시험시간(분)', '')}분"
+        )
+        lines.extend(
+            [
+                "BEGIN:VEVENT",
+                f"UID:{uid}",
+                f"DTSTAMP:{now}",
+                f"DTSTART:{start}",
+                f"DTEND:{end}",
+                f"SUMMARY:{course} 시험",
+                f"LOCATION:강의실 {room}",
+                f"DESCRIPTION:{desc}",
+                "END:VEVENT",
+            ]
+        )
+
+    lines.append("END:VCALENDAR")
+    return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
 # -------------------------------------------------
 # 데이터 로드
 # -------------------------------------------------
@@ -1638,6 +1720,12 @@ if menu == "학번별 조회":
                     file_name=f"student_{sid}_calendar.png",
                     mime="image/png",
                 )
+            st.download_button(
+                "휴대폰/Google 캘린더에 저장(ICS)",
+                data=make_student_calendar_ics(df_student, sid),
+                file_name=f"student_{sid}_exam_calendar.ics",
+                mime="text/calendar",
+            )
 
             st.markdown("#### 시각화 파일")
             room_choice_student = st.selectbox(
@@ -1747,7 +1835,15 @@ elif menu == "전체 시간표":
     except Exception:
         picked_idx = None
 
-    # 오른쪽에서 선택/이동 조건을 먼저 계산한 뒤, 왼쪽에 원래 캘린더와 초록 가능영역을 함께 표시한다.
+    with left_col:
+        st.markdown("##### 현재 전체 시간표")
+        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
+        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
+        if week_count == 0:
+            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
+        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
+
+    # 오른쪽에서 선택/이동 조건을 계산하고, 가능영역은 아래쪽에 추가로 표시한다.
     with right_col:
         st.markdown("#### 이동 설정")
         visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy()
@@ -1857,12 +1953,6 @@ elif menu == "전체 시간표":
                 st.dataframe(pd.DataFrame(feasible_rows).sort_values("목적함수변화").head(10), use_container_width=True, hide_index=True)
 
     with left_col:
-        st.markdown("##### 현재 전체 시간표")
-        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
-        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
-        if week_count == 0:
-            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
-        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
         if feasible_html is not None:
             st.markdown("##### 선택 과목 이동 가능영역")
             st.caption("초록색 칸은 현재 선택한 과목을 해당 위치로 옮길 수 있는 후보입니다.")
