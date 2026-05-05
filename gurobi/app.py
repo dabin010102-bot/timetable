@@ -1711,6 +1711,12 @@ elif menu == "전체 시간표":
             st.info("현재 조건에서 선택할 과목이 없습니다.")
         else:
             visible_week = visible_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+            st.markdown("##### 현재 주차 시간표")
+            st.dataframe(
+                visible_week[["과목명", "학년", "요일", "시작", "종료", "강의실"]].copy(),
+                use_container_width=True,
+                hide_index=True,
+            )
             labels = visible_week.apply(
                 lambda r: (
                     f"[{int(r['시험인덱스'])}] {r['과목명']} ({r['학년']}학년) | "
@@ -1808,6 +1814,10 @@ elif menu == "전체 시간표":
 
     with left_col:
         st.markdown("##### 현재 전체 시간표")
+        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
+        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
+        if week_count == 0:
+            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
         st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
         if feasible_html is not None:
             st.markdown("##### 선택 과목 이동 가능영역")
