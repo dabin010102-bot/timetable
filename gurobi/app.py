@@ -143,12 +143,49 @@ st.markdown(
       word-break:keep-all;
     }
     .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px;}
-    .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:6px; vertical-align:top; height:52px;}
+    .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:5px; vertical-align:top; height:58px;}
     .calendar-wrap th {background:#dbe7f9; text-align:center; font-size:14px; color:var(--text-main);}
     .calendar-wrap .time-col {background:#f3f7fc; width:90px; text-align:center; font-weight:700; color:var(--text-main);}
-    .calendar-wrap .exam {background:var(--accent-bg); color:var(--accent-text);}
-    .calendar-wrap .course {font-weight:800; margin-bottom:2px; font-size:13px; color:var(--accent-text);}
+    .calendar-wrap .exam {background:#dbeafe !important; color:#0b1220 !important; border:2px solid #7aa7df !important;}
+    .calendar-wrap .course {font-weight:900; margin-bottom:3px; font-size:13px; color:#0b1220 !important;}
     .calendar-wrap .empty {background:#ffffff;}
+    .calendar-wrap .exam-block {
+      display:block;
+      min-height:46px;
+      background:#bfdbfe;
+      border:1px solid #60a5fa;
+      border-radius:7px;
+      padding:5px 6px;
+      line-height:1.22;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+    }
+    .calendar-wrap .exam-link {
+      text-decoration:none !important;
+      color:#0b1220 !important;
+      display:block;
+    }
+    .calendar-wrap .grade-pill {
+      display:inline-block;
+      margin-left:4px;
+      padding:1px 5px;
+      border-radius:999px;
+      background:#1d4ed8;
+      color:#ffffff !important;
+      font-size:11px;
+      font-weight:900;
+    }
+    .calendar-wrap .room-line {
+      color:#1e3a8a !important;
+      font-weight:800;
+      font-size:12px;
+    }
+    .calendar-wrap .cont {
+      min-height:46px;
+      background:#bfdbfe;
+      border-left:1px solid #60a5fa;
+      border-right:1px solid #60a5fa;
+      border-radius:5px;
+    }
     .click-grid-head {
       display:grid;
       grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
@@ -944,16 +981,23 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
         s0 = int(r.get("시작슬롯", 0))
         s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
         show_course = r.get("과목명", r.get("과목", ""))
+        grade_txt = str(r.get("학년", "-"))
         start_txt = str(r.get("시작", ""))
         end_txt = str(r.get("종료", ""))
         room_txt = str(r.get("강의실", "-"))
         dur_txt = str(r.get("시험시간(분)", ""))
-        text_main = f"<div class='course'>{show_course}</div><div>{start_txt}~{end_txt}</div><div>{dur_txt}분 · 강의실 {room_txt}</div>"
+        text_main = (
+            "<div class='exam-block'>"
+            f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}학년</span></div>"
+            f"<div>{start_txt}~{end_txt} · {dur_txt}분</div>"
+            f"<div class='room-line'>강의실 {room_txt}</div>"
+            "</div>"
+        )
         if clickable and "시험인덱스" in r:
             idx_val = int(r.get("시험인덱스", -1))
             text_main = (
                 f"<a href='?pick={idx_val}&week={target_week}' "
-                "style='text-decoration:none;color:inherit;display:block;'>"
+                "class='exam-link'>"
                 f"{text_main}</a>"
             )
         for s in range(s0, s1):
