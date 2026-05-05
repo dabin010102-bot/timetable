@@ -16,7 +16,6 @@ from __future__ import annotations
 import re
 import time
 import os
-import csv
 import json
 import zipfile
 import xml.etree.ElementTree as ET
@@ -55,12 +54,8 @@ WEEK_START_DATE = {
 }
 WEEK_VALUES = [7, 8, 9]
 OUTPUT_DIR = Path(__file__).resolve().parent
-RESULT_CSV_PATH = OUTPUT_DIR / "결과_결정변수표.csv"
-RESULT_TXT_PATH = OUTPUT_DIR / "결과_요약.txt"
 RESULT_JSON_PATH = OUTPUT_DIR / "결과_서비스데이터.json"
 RESULT_JSON_ASCII_PATH = OUTPUT_DIR / "result_service_data.json"
-MODEL_HTML_PATH = OUTPUT_DIR / "수리모형_정리본.html"
-REPORT_DIR = OUTPUT_DIR / "결과_리포트"
 # 실행 제외 과목(정규화 키 기준)
 EXCLUDED_COURSE_KEYS = {"syscapstone", "ergoexpeval"}
 
@@ -79,8 +74,8 @@ def env_int(name: str, default: int) -> int:
 # 결정변수가 아니라 파라미터이다.
 D_MAX = 0
 T_MAX = 4
-# 리포트 창 표시 제어
-GENERATE_REPORT = env_int("GENERATE_REPORT", 1)
+# matplotlib 결과 창 표시 제어
+SHOW_PLOTS = env_int("SHOW_PLOTS", 1)
 TIME_LIMIT_SEC = env_int("TIME_LIMIT_SEC", 0)
 MIP_FOCUS = env_int("MIP_FOCUS", 0)
 
@@ -265,141 +260,6 @@ def extract_student_id(row: dict[str, str], fallback_idx: int) -> str:
             if val:
                 return val
     return f"학생_{fallback_idx + 1}"
-
-
-def save_result_files(
-    inst: dict,
-    assignment: dict[int, dict[str, int | list[int]]],
-    time_move_map: dict[int, int],
-    room_change_map: dict[int, int],
-    objective: float,
-    room_move_sum: float,
-    time_move_sum: float,
-    daily_penalty_sum: float,
-    overlap_violation: int,
-    section_overlap_violation: int,
-    consecutive_violation: int,
-    daily4_count: int,
-    runtime_sec: float,
-    gurobi_runtime_sec: float,
-) -> None:
-    with RESULT_TXT_PATH.open("w", encoding="utf-8") as f:
-        f.write("===== 18과목 Exact 결과 =====\n")
-        f.write(f"Objective = {objective:.4f}\n")
-        f.write(f"RoomMoveSum = {room_move_sum:.0f}\n")
-        f.write(f"TimeMoveSum = {time_move_sum:.0f}\n")
-        f.write(f"DailyPenaltySum = {daily_penalty_sum:.0f}\n")
-        f.write(f"동시시험 위반건수 = {overlap_violation}\n")
-        f.write(f"같은과목 분반연속배정 위반건수 = {section_overlap_violation}\n")
-        f.write("연속시험 제약 = 제외\n")
-        f.write(f"하루 4시험 건수 = {daily4_count}\n")
-        f.write(f"RuntimeSec = {runtime_sec:.6f}\n")
-        f.write(f"GurobiRuntimeSec = {gurobi_runtime_sec:.6f}\n")
-
-    with RESULT_CSV_PATH.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["과목", "원래시간후보", "주차", "요일", "시작", "종료", "x_iwdt", "z_iwdtr(강의실)", "TimeMove_i", "RoomChange_i"])
-        for i in range(inst["n_exams"]):
-            info = assignment[i]
-            st = int(info["slot_val"])
-            et_min = 9 * 60 + st * 30 + int(inst["exams"][i].get("dur_minutes", inst["exams"][i]["dur_slots"] * 30))
-            room_label = " ".join(str(r) for r in info["rooms"])
-            writer.writerow([
-                inst["exams"][i]["name"],
-                orig_slots_to_label(inst["exams"][i].get("orig_slots", []), inst["day_keys"]),
-                info["week"],
-                DAY_LABELS.get(int(info["dow"]), str(info["dow"])),
-                slot_to_time(st),
-                minute_to_time(et_min),
-                1,
-                room_label,
-                time_move_map[i],
-                room_change_map[i],
-            ])
-
-
-def write_model_summary_html() -> None:
-    """현재 코드 기준 수리모형 정리본을 저장한다."""
-    html_text = f"""<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>수리모형 정리본</title>
-  <script>
-    window.MathJax = {{
-      tex: {{ inlineMath: [['$', '$']], displayMath: [['$$','$$']] }},
-      svg: {{ fontCache: 'global' }}
-    }};
-  </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
-  <style>
-    body {{ font-family: "Malgun Gothic", sans-serif; margin:24px; line-height:1.7; color:#1f2d3d; }}
-    h1 {{ font-size:26px; }} h2 {{ font-size:20px; margin-top:24px; }}
-    .box {{ border:1px solid #d8e0ea; border-radius:10px; padding:14px 16px; margin-top:10px; background:#fafcff; }}
-    .eq {{ background:#f3f6fb; border-radius:6px; padding:8px 10px; margin:8px 0; overflow-x:auto; }}
-    .desc {{ color:#30455a; font-size:14px; }}
-  </style>
-</head>
-<body>
-  <h1>시험시간표 최적화 수리모형 정리본</h1>
-  <div class="box">
-    <div>가중치(AHP): $\\alpha={WEIGHT_ROOM_MOVE}$, $\\beta={WEIGHT_TIME_MOVE}$, $\\gamma={WEIGHT_DAILY}$</div>
-    <div>최대 이동 허용: $D_{{max}}={D_MAX}$, $T_{{max}}={T_MAX}$</div>
-    <div class="desc" style="margin-top:8px;">기존 수리모형 틀은 유지하고, 과목 통합 대신 분반별 시험을 각각 배정하도록 최소수정하였다.</div>
-  </div>
-  <h2>1. 집합</h2>
-  <div class="box">
-    <div class="eq">$$I=\\{{\\text{{분반별 시험 전체 집합}}\\}},\\quad S=\\{{\\text{{학생 전체 집합}}\\}},\\quad W=\\{{7,8,9\\}}$$</div>
-    <div class="eq">$$R=\\{{\\text{{강의실 집합}}\\}},\\quad D=\\{{\\text{{요일 집합}}\\}},\\quad T=\\{{\\text{{시험 시작시간 슬롯 집합}}\\}},\\quad \\tau=\\{{\\text{{실제 시간점 집합}}\\}}$$</div>
-    <div class="eq">$$G=\\{{(i,k)\\mid i,k\\in I,\\ \\text{{같은 과목의 서로 다른 분반 쌍}}\\}}$$</div>
-    <div class="desc">$I$는 이제 통합 과목이 아니라, 예를 들어 `Calculus(1)-1`, `Calculus(1)-2`처럼 분반별 시험을 각각 원소로 갖는다.</div>
-  </div>
-  <h2>2. 파라미터</h2>
-  <div class="box">
-    <div class="eq">$$need\\_room_i,\\ enr_i,\\ cap_r,\\ enroll_{{si}},\\ dur_i$$</div>
-    <div class="eq">$$origroom_{{ir}},\\ origtime_{{iwdt}},\\ D_{{max}},\\ T_{{max}}$$</div>
-    <div class="desc">$origroom_{{ir}}$: 분반 시험 $i$의 원래 강의실이 $r$이면 1</div>
-    <div class="desc">$origtime_{{iwdt}}$: 분반 시험 $i$의 원래 시험 기준 요일/시간이 $(d,t)$이면 1</div>
-  </div>
-  <h2>3. 결정변수</h2>
-  <div class="box">
-    <div class="eq">$$x_{{iwdt}}\\in\\{{0,1\\}},\\quad z_{{iwdtr}}\\in\\{{0,1\\}},\\quad y_{{swd}}\\in\\mathbb{{Z}}_+,\\quad P_{{swd}}\\ge0$$</div>
-    <div class="eq">$$RoomChange_i\\in\\{{0,1\\}},\\quad TimeMove_i\\in\\{{0,1\\}}$$</div>
-  </div>
-  <h2>4. 목적함수</h2>
-  <div class="box">
-    <div class="eq">$$\\min\\;\\alpha\\sum_i RoomChange_i+\\beta\\sum_i TimeMove_i+\\gamma\\sum_s\\sum_w\\sum_d P_{{swd}}$$</div>
-  </div>
-  <h2>5. 제약식</h2>
-  <div class="box">
-    <div class="eq">(1) $$\\sum_w\\sum_d\\sum_t x_{{iwdt}}=1\\quad\\forall i$$</div>
-    <div class="desc">각 분반 시험은 정확히 한 번만 배정된다.</div>
-    <div class="eq">(2) $$\\sum_r z_{{iwdtr}}=need\\_room_i x_{{iwdt}}\\quad\\forall i,w,d,t$$</div>
-    <div class="desc">분반 시험 $i$가 배정되면 필요한 강의실 수만큼 강의실을 선택한다.</div>
-    <div class="eq">(3) $$\\sum_r cap_r z_{{iwdtr}}\\ge enr_i x_{{iwdt}}\\quad\\forall i,w,d,t$$</div>
-    <div class="desc">선택된 강의실 총 수용인원은 해당 분반 수강인원 이상이어야 한다.</div>
-    <div class="eq">(4) $$\\sum_{{i\\in I}}\\sum_{{t\\in T:\\ t\\le\\tau<t+dur_i}} z_{{iwdtr}}\\le1\\quad\\forall w,d,r,\\tau$$</div>
-    <div class="desc">같은 주차, 요일, 강의실, 실제 시간점에서는 시험이 하나만 가능하다.</div>
-    <div class="eq">(5) $$\\sum_{{i\\in I}}\\sum_{{t\\in T:\\ t\\le\\tau<t+dur_i}} enroll_{{si}}x_{{iwdt}}\\le1\\quad\\forall s,w,d,\\tau$$</div>
-    <div class="desc">같은 학생은 같은 실제 시간점에 두 개 이상의 시험을 볼 수 없다.</div>
-    <div class="eq">(5-1) $$\\text{{if }}(i,k)\\in G,\\ \\text{{then same week/day and }}t'=t+dur_i\\ \\text{{or }}t=t'+dur_k$$</div>
-    <div class="desc">같은 과목의 서로 다른 분반 시험은 같은 주차·같은 요일에 바로 이어서 배정한다. 즉 한 분반 시험이 끝나면 다른 분반 시험이 다음 슬롯에서 곧바로 시작해야 한다.</div>
-    <div class="eq">(6) $$y_{{swd}}=\\sum_i\\sum_t enroll_{{si}}x_{{iwdt}}\\quad\\forall s,w,d$$</div>
-    <div class="desc">학생 $s$의 주차 $w$, 요일 $d$ 하루 시험 개수를 계산한다.</div>
-    <div class="eq">(7) $$y_{{swd}}\\le3\\quad\\forall s,w,d$$</div>
-    <div class="desc">하루 최대 시험 수는 3개로 제한한다.</div>
-    <div class="eq">(8) $$P_{{swd}}=(y_{{swd}}-1)^2\\quad\\forall s,w,d$$</div>
-    <div class="desc">하루 시험 수 벌점은 $(n-1)^2$ 구조를 사용한다.</div>
-    <div class="eq">(9) $$RoomChange_i\\ge1-\\sum_{{w,d,t,r}}origroom_{{ir}}z_{{iwdtr}}\\quad\\forall i$$</div>
-    <div class="desc">원래 강의실이 하나라도 선택되면 강의실 변경이 아닌 것으로 처리한다.</div>
-    <div class="eq">(10) $$TimeMove_i\\ge1-\\sum_{{w,d,t}}origtime_{{idt}}x_{{iwdt}}\\quad\\forall i$$</div>
-    <div class="desc">원래 기준 시간에 그대로 배정되면 시간이동이 0, 다르면 1이다.</div>
-    <div class="eq">(11) $$x_{{iwdt}}=0 \\quad \\text{{if }} |d-d_0|>D_{{max}} \\text{{ or }} |t-t_0|>T_{{max}}$$</div>
-    <div class="desc">즉, 원래 시험 기준이 $(d_0,t_0)$인 과목은 허용된 요일 이동 범위 $D_{{max}}$와 시간 이동 범위 $T_{{max}}$를 넘는 슬롯에 배정될 수 없다.</div>
-  </div>
-</body>
-</html>"""
-    MODEL_HTML_PATH.write_text(html_text, encoding="utf-8")
 
 
 def show_result_plots(
@@ -838,8 +698,6 @@ def build_instance_18() -> dict:
 # ---------------------------------------------------------------------
 def run_exact_18() -> dict | None:
     inst = build_instance_18()
-    write_model_summary_html()
-
     # ================================================================
     # 1. 집합 정의
     # I: 과목, S: 학생, W: 주차{7,8,9}, D: 요일{1..5}, T: 시작 슬롯, TAU: 실제 시간점, R: 강의실
@@ -1348,22 +1206,6 @@ def run_exact_18() -> dict | None:
             str(room_change_map[i]),
         ])
 
-    save_result_files(
-        inst=inst,
-        assignment=assignment,
-        time_move_map=time_move_map,
-        room_change_map=room_change_map,
-        objective=float(m.ObjVal),
-        room_move_sum=float(total_room_move.getValue()),
-        time_move_sum=float(total_time_move.getValue()),
-        daily_penalty_sum=float(total_daily.getValue()),
-        overlap_violation=overlap_violation,
-        section_overlap_violation=section_overlap_violation,
-        consecutive_violation=0,
-        daily4_count=daily4,
-        runtime_sec=wall_runtime,
-        gurobi_runtime_sec=float(m.Runtime),
-    )
     # 서비스(웹) 전용 데이터 저장
     service_payload = {
         "summary": {
@@ -1407,13 +1249,11 @@ def run_exact_18() -> dict | None:
     RESULT_JSON_PATH.write_text(json_text, encoding="utf-8")
     RESULT_JSON_ASCII_PATH.write_text(json_text, encoding="utf-8")
 
-    print(f"결과 파일 저장: {RESULT_TXT_PATH}")
-    print(f"결과 파일 저장: {RESULT_CSV_PATH}")
-    print(f"결과 파일 저장: {RESULT_JSON_PATH}")
-    print(f"결과 파일 저장: {RESULT_JSON_ASCII_PATH}")
+    print(f"Streamlit용 결과 갱신: {RESULT_JSON_PATH}")
+    print(f"Streamlit용 결과 갱신: {RESULT_JSON_ASCII_PATH}")
 
-    # 시각화/리포트 파일 생성
-    if GENERATE_REPORT == 1:
+    # 영상 촬영용 matplotlib 창 표시
+    if SHOW_PLOTS == 1:
         show_result_plots(
             inst=inst,
             assignment=assignment,
