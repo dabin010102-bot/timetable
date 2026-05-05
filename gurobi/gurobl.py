@@ -18,9 +18,6 @@ import time
 import os
 import csv
 import json
-import html
-import base64
-import webbrowser
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
@@ -82,9 +79,8 @@ def env_int(name: str, default: int) -> int:
 # 결정변수가 아니라 파라미터이다.
 D_MAX = 0
 T_MAX = 4
-# 리포트 생성/자동열기 제어
+# 리포트 창 표시 제어
 GENERATE_REPORT = env_int("GENERATE_REPORT", 1)
-AUTO_OPEN_REPORT = env_int("AUTO_OPEN_REPORT", 1)
 TIME_LIMIT_SEC = env_int("TIME_LIMIT_SEC", 0)
 MIP_FOCUS = env_int("MIP_FOCUS", 0)
 
@@ -417,15 +413,12 @@ def show_result_plots(
     decision_rows: list[list[str]],
 ) -> None:
     """
-    결과 페이지를 파일로 생성한다.
-    - page_00_summary.png: 요약
-    - page_room_XXXX.png: 강의실별 페이지
-    - report.html: 이전/다음 버튼 페이지
+    구로비 실행 결과를 matplotlib 창으로 바로 띄운다.
+    영상 촬영용 출력이므로 report.html/png/pdf 리포트 파일은 저장하지 않는다.
     """
     try:
         import matplotlib.pyplot as plt
         from matplotlib.patches import Rectangle
-        from matplotlib.backends.backend_pdf import PdfPages
     except Exception:
         print("시각화 생략: matplotlib 환경 오류(NumPy/Matplotlib 버전 충돌)")
         return
@@ -443,12 +436,7 @@ def show_result_plots(
     except Exception:
         pass
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    page_files: list[tuple[str, str]] = []
-    pdf_path = REPORT_DIR / "결과_발표링크용.pdf"
-    pdf = PdfPages(str(pdf_path))
-
-    # 0) 요약 페이지: 결정변수 정의 + 목적함수 값 + 제약 위반 점검
+    # 0) 요약 창: 결정변수 선택 결과 + 목적함수 값 + 제약 위반 점검
     fig0, ax0 = plt.subplots(figsize=(12, 7))
     ax0.axis("off")
     ax0.set_title("수리모형 실행 결과 요약", fontsize=16, pad=14)
@@ -487,11 +475,6 @@ def show_result_plots(
 
     ax0.text(0.02, 0.12, "판정: 위반 건수가 모두 0이면 제약식 검증 통과", fontsize=10)
     plt.tight_layout()
-    summary_png = REPORT_DIR / "page_00_summary.png"
-    fig0.savefig(summary_png, dpi=160, bbox_inches="tight")
-    pdf.savefig(fig0)
-    plt.close(fig0)
-    page_files.append(("요약", summary_png.name))
 
     # records: (week, dow, room, start_slot, duration_height, course, time_label)
     records: list[tuple[int, int, int, int, float, str, str]] = []
@@ -562,84 +545,9 @@ def show_result_plots(
                 spine.set_linewidth(0.8)
 
         fig.tight_layout(rect=[0, 0, 1, 0.985], h_pad=1.2)
-        room_png = REPORT_DIR / f"page_room_{room}.png"
-        fig.savefig(room_png, dpi=160, bbox_inches="tight")
-        pdf.savefig(fig)
-        plt.close(fig)
-        page_files.append((f"강의실 {room}", room_png.name))
 
-    # HTML 리포트(버튼으로 페이지 이동) - 이미지 내장(base64)로 단일 파일 전달 가능
-    sections = []
-    for idx, (title, fname) in enumerate(page_files):
-        disp = "block" if idx == 0 else "none"
-        img_path = REPORT_DIR / fname
-        img_b64 = base64.b64encode(img_path.read_bytes()).decode("ascii")
-        sections.append(
-            f"""
-            <section class="page" id="page-{idx}" style="display:{disp}">
-              <h2>{html.escape(title)} ({idx+1}/{len(page_files)})</h2>
-              <img src="data:image/png;base64,{img_b64}" alt="{html.escape(title)}" />
-            </section>
-            """
-        )
-    report_html = f"""<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>INUTimetable</title>
-  <style>
-    body {{ font-family: 'Malgun Gothic', 'NanumGothic', sans-serif; margin: 20px; background:#f6f8fb; }}
-    .wrap {{ max-width: 1200px; margin: 0 auto; background:#fff; border:1px solid #dde3ea; border-radius:12px; padding:16px; }}
-    h1 {{ margin: 0 0 10px 0; }}
-    .toolbar {{ display:flex; gap:8px; margin: 8px 0 14px 0; }}
-    button {{ border:1px solid #c8d0da; background:#f3f6fb; border-radius:8px; padding:8px 12px; cursor:pointer; }}
-    button:hover {{ background:#eaf0f8; }}
-    .page img {{ width:100%; height:auto; border:1px solid #d4dbe4; border-radius:8px; }}
-    .meta {{ color:#45566c; font-size: 13px; margin-bottom:8px; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>INUTimetable</h1>
-    <div class="meta">생성 파일: {html.escape(str(REPORT_DIR))}</div>
-    <div class="toolbar">
-      <button onclick="prevPage()">◀ 이전 페이지</button>
-      <button onclick="nextPage()">다음 페이지 ▶</button>
-    </div>
-    {''.join(sections)}
-  </div>
-  <script>
-    let idx = 0;
-    const total = {len(page_files)};
-    function show(i) {{
-      for (let k=0; k<total; k++) {{
-        const el = document.getElementById('page-'+k);
-        if (el) el.style.display = (k===i) ? 'block' : 'none';
-      }}
-      idx = i;
-    }}
-    function nextPage() {{ show((idx + 1) % total); }}
-    function prevPage() {{ show((idx - 1 + total) % total); }}
-  </script>
-</body>
-</html>"""
-    (REPORT_DIR / "report.html").write_text(report_html, encoding="utf-8")
-    pdf.close()
-    report_html_path = REPORT_DIR / "report.html"
-    print(f"리포트 저장: {report_html_path}")
-    print(f"PDF 저장: {pdf_path}")
-    # 실행 직후 결과 화면 자동 열기
-    if AUTO_OPEN_REPORT == 1:
-        try:
-            if os.name == "nt":
-                os.startfile(str(report_html_path))  # type: ignore[attr-defined]
-            else:
-                webbrowser.open_new_tab(report_html_path.as_uri())
-        except Exception:
-            try:
-                webbrowser.open_new_tab(report_html_path.as_uri())
-            except Exception:
-                pass
+    print("matplotlib 결과 창을 표시합니다. 촬영 후 창을 닫으면 실행이 종료됩니다.")
+    plt.show()
 
 
 def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
