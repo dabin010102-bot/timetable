@@ -289,44 +289,117 @@ def show_result_plots(
     except Exception:
         pass
 
-    # 0) 요약 창: 결정변수 선택 결과 + 목적함수 값 + 제약 위반 점검
-    fig0, ax0 = plt.subplots(figsize=(12, 7))
+    # 0) 최적화 결과 창: Streamlit의 "최적화 결과" 탭과 같은 순서로 보여준다.
+    fig0, ax0 = plt.subplots(figsize=(15.5, 9))
+    fig0.patch.set_facecolor("#f6f8fb")
+    ax0.set_facecolor("#f6f8fb")
     ax0.axis("off")
-    ax0.set_title("수리모형 실행 결과 요약", fontsize=16, pad=14)
+
+    def draw_card(x: float, y: float, w: float, h: float, title: str, value: str, color: str = "#0f172a") -> None:
+        rect = Rectangle((x, y), w, h, transform=ax0.transAxes, facecolor="white", edgecolor="#d8e0ea", linewidth=1.0)
+        ax0.add_patch(rect)
+        ax0.text(x + 0.018, y + h - 0.034, title, transform=ax0.transAxes, fontsize=10, color="#64748b", va="top")
+        ax0.text(x + 0.018, y + 0.030, value, transform=ax0.transAxes, fontsize=18, fontweight="bold", color=color, va="bottom")
+
+    def style_table(tbl, header_color: str = "#1f2937", body_color: str = "white") -> None:
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(8.5)
+        for (row, _col), cell in tbl.get_celld().items():
+            cell.set_edgecolor("#d8e0ea")
+            cell.set_linewidth(0.7)
+            if row == 0:
+                cell.set_facecolor(header_color)
+                cell.get_text().set_color("white")
+                cell.get_text().set_fontweight("bold")
+            else:
+                cell.set_facecolor(body_color)
+                cell.get_text().set_color("#111827")
+
+    calc_objective = WEIGHT_ROOM_MOVE * room_move + WEIGHT_TIME_MOVE * time_move + WEIGHT_DAILY * daily_penalty
+    violation_total = sum(int(v) for _name, v in verify_rows if str(v).strip().lstrip("-").isdigit())
+
+    ax0.text(0.02, 0.965, "INUTimetable | 구로비 최적화 결과", transform=ax0.transAxes, fontsize=20, fontweight="bold", color="#111827", va="top")
+    ax0.text(
+        0.02,
+        0.925,
+        "결정변수 선택 결과, 목적함수 현황, 제약식 위반 여부를 한 화면에서 확인합니다.",
+        transform=ax0.transAxes,
+        fontsize=10.5,
+        color="#475569",
+        va="top",
+    )
+
+    card_y = 0.80
+    card_w = 0.18
+    gap = 0.015
+    draw_card(0.02 + 0 * (card_w + gap), card_y, card_w, 0.10, "목적함수값", f"{objective:.4f}")
+    draw_card(0.02 + 1 * (card_w + gap), card_y, card_w, 0.10, "강의실 변경 합", f"{room_move:.0f}")
+    draw_card(0.02 + 2 * (card_w + gap), card_y, card_w, 0.10, "시간 이동 합", f"{time_move:.0f}")
+    draw_card(0.02 + 3 * (card_w + gap), card_y, card_w, 0.10, "하루 시험수 벌점 합", f"{daily_penalty:.0f}")
+    draw_card(0.02 + 4 * (card_w + gap), card_y, card_w, 0.10, "제약 위반 합", f"{violation_total}", "#166534" if violation_total == 0 else "#b91c1c")
 
     obj_rows = [
-        ["가중치(강의실변경)", f"{WEIGHT_ROOM_MOVE}"],
-        ["가중치(시간이동)", f"{WEIGHT_TIME_MOVE}"],
-        ["가중치(하루벌점)", f"{WEIGHT_DAILY}"],
+        ["가중치(강의실변경)", f"{WEIGHT_ROOM_MOVE:.4f}"],
+        ["가중치(시간이동)", f"{WEIGHT_TIME_MOVE:.4f}"],
+        ["가중치(하루시험수)", f"{WEIGHT_DAILY:.4f}"],
         ["강의실변경합", f"{room_move:.0f}"],
         ["시간이동합", f"{time_move:.0f}"],
         ["하루벌점합", f"{daily_penalty:.0f}"],
-        ["계산 목적값", f"{WEIGHT_ROOM_MOVE * room_move + WEIGHT_TIME_MOVE * time_move + WEIGHT_DAILY * daily_penalty:.4f}"],
+        ["계산 목적값", f"{calc_objective:.4f}"],
         ["모델 목적값", f"{objective:.4f}"],
     ]
 
-    ax0.text(0.02, 0.92, "결정변수 선택 결과(요약)", fontsize=12, fontweight="bold", va="top")
+    ax0.text(0.02, 0.755, "목적함수 현황", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
+    tbl_obj = ax0.table(
+        cellText=obj_rows,
+        colLabels=["항목", "값"],
+        colLoc="left",
+        cellLoc="left",
+        bbox=[0.02, 0.505, 0.31, 0.225],
+    )
+    style_table(tbl_obj, header_color="#334155")
+
+    ax0.text(0.36, 0.755, "제약식 위반사항", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
+    tbl_chk = ax0.table(
+        cellText=verify_rows,
+        colLabels=["제약식", "위반건수"],
+        colLoc="left",
+        cellLoc="left",
+        bbox=[0.36, 0.505, 0.62, 0.225],
+    )
+    style_table(tbl_chk, header_color="#334155")
+    for (row, col), cell in tbl_chk.get_celld().items():
+        if row > 0 and col == 1:
+            val = cell.get_text().get_text().strip()
+            if val.isdigit() and int(val) > 0:
+                cell.set_facecolor("#fee2e2")
+                cell.get_text().set_color("#991b1b")
+                cell.get_text().set_fontweight("bold")
+            elif val.isdigit():
+                cell.set_facecolor("#dcfce7")
+                cell.get_text().set_color("#166534")
+                cell.get_text().set_fontweight("bold")
+
+    ax0.text(0.02, 0.465, "결정변수 선택 결과", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
+    decision_preview = decision_rows[:18]
     tbl_dec = ax0.table(
-        cellText=decision_rows,
+        cellText=decision_preview,
         colLabels=["과목", "선택 x_iwdt", "선택 z_iwdtr", "TimeMove_i", "RoomChange_i"],
         colLoc="left",
         cellLoc="left",
-        bbox=[0.02, 0.48, 0.96, 0.40],
+        bbox=[0.02, 0.050, 0.96, 0.390],
     )
-    tbl_dec.auto_set_font_size(False)
-    tbl_dec.set_fontsize(9.2)
+    style_table(tbl_dec, header_color="#111827")
 
-    ax0.text(0.02, 0.44, "목적함수 결과", fontsize=12, fontweight="bold", va="top")
-    tbl_obj = ax0.table(cellText=obj_rows, colLabels=["항목", "값"], colLoc="left", cellLoc="left", bbox=[0.02, 0.20, 0.45, 0.20])
-    tbl_obj.auto_set_font_size(False)
-    tbl_obj.set_fontsize(10)
-
-    ax0.text(0.53, 0.44, "제약식 위반 검증", fontsize=12, fontweight="bold", va="top")
-    tbl_chk = ax0.table(cellText=verify_rows, colLabels=["검증 항목", "위반건수"], colLoc="left", cellLoc="left", bbox=[0.53, 0.20, 0.45, 0.20])
-    tbl_chk.auto_set_font_size(False)
-    tbl_chk.set_fontsize(9.3)
-
-    ax0.text(0.02, 0.12, "판정: 위반 건수가 모두 0이면 제약식 검증 통과", fontsize=10)
+    ax0.text(
+        0.02,
+        0.018,
+        "아래 강의실별 창에서는 7/8/9주차 월~금 캘린더 형태로 최적화된 시험 배정을 확인합니다.",
+        transform=ax0.transAxes,
+        fontsize=9.5,
+        color="#475569",
+        va="bottom",
+    )
     plt.tight_layout()
 
     # records: (week, dow, room, start_slot, duration_height, course, time_label)
