@@ -246,6 +246,16 @@ st.markdown(
       width:100% !important;
       line-height:1.15 !important;
       padding:5px 6px !important;
+      background:#dbeafe !important;
+      border:1px solid #60a5fa !important;
+      color:#0b1220 !important;
+      font-weight:800 !important;
+      border-radius:8px !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+      background:#bfdbfe !important;
+      border-color:#2563eb !important;
+      color:#0b1220 !important;
     }
     .result-table-wrap {overflow-x:auto; margin-top:10px;}
     .result-table {width:100%; border-collapse:collapse; font-size:14px; background:#ffffff;}
@@ -314,15 +324,15 @@ COURSE_NAME_KO = {
 
 # 학년 파일이 없거나 매칭이 실패해도 화면에서 학년이 비지 않도록 하는 기본값
 COURSE_GRADE_FALLBACK = {
-    "Calculus(1)": "3",
-    "IntroIE&M": "3",
+    "Calculus(1)": "1",
+    "IntroIE&M": "1",
     "GenAIApps": "3",
     "Database": "3",
     "Det.ManageSci": "3",
     "Ergonomics": "3",
     "Prob&Stats(1)": "3",
     "ProdDevProcess": "3",
-    "QualityEng": "5",
+    "QualityEng": "4",
     "ReinforcLearn": "3",
     "SmartLogistics": "3",
     "DataMining": "3",
@@ -1030,13 +1040,6 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
             f"<div class='room-line'>강의실 {room_txt}</div>"
             "</div>"
         )
-        if clickable and "시험인덱스" in r:
-            idx_val = int(r.get("시험인덱스", -1))
-            text_main = (
-                f"<a href='?pick={idx_val}&week={target_week}' "
-                "class='exam-link'>"
-                f"{text_main}</a>"
-            )
         for s in range(s0, s1):
             tlabel = slot_to_time(s)
             if s == s0:
@@ -1406,7 +1409,9 @@ def render_clickable_calendar(
             elif key in starts:
                 r = starts[key]
                 exam_idx = int(r["시험인덱스"])
-                label = f"{r['과목명']}\n{r['시작']}~{r['종료']}\n{r['강의실']}"
+                grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", r.get("과목명", "")))))
+                selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
+                label = f"{selected_mark}{r['과목명']}\n{grade_txt}\n{r['시작']}~{r['종료']}\n{r['강의실']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
                     st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
@@ -1813,7 +1818,9 @@ elif menu == "전체 시간표":
     with viz1:
         viz_room = st.selectbox("강의실", ["전체"] + [str(r) for r in ROOM_ORDER], key="overall_viz_room")
     with viz2:
-        viz_grade = st.selectbox("학년", ["전체"] + sorted(exam_df["학년"].astype(str).unique().tolist()), key="overall_viz_grade")
+        # 학년 필터는 1~4학년만 노출한다. 데이터에 학년 컬럼이 없으면 COURSE_GRADE_FALLBACK을 사용한다.
+        grade_values = sorted({str(g).replace("학년", "").strip() for g in exam_df["학년"].astype(str).tolist() if str(g).replace("학년", "").strip() in {"1", "2", "3", "4"}})
+        viz_grade = st.selectbox("학년", ["전체"] + grade_values, key="overall_viz_grade")
     with viz3:
         sim_week_view = st.radio("주차", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
     sim_week_num = int(sim_week_view.replace("주차", ""))
@@ -1822,76 +1829,64 @@ elif menu == "전체 시간표":
     if viz_room != "전체":
         calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     if viz_grade != "전체":
-        calendar_src = calendar_src[calendar_src["학년"].astype(str) == str(viz_grade)]
+        calendar_src = calendar_src[calendar_src["학년"].astype(str).str.replace("학년", "", regex=False).str.strip() == str(viz_grade)]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
-    left_col, right_col = st.columns([8, 4])
     student_sets = build_exam_student_sets(exam_df, df_is)
-    feasible_html = None
+    visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy()
+    visible_week = visible_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+
+    if "sim_selected_idx" not in st.session_state:
+        st.session_state.sim_selected_idx = None
+
+    visible_idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()] if not visible_week.empty else []
+    if visible_idx_values and st.session_state.sim_selected_idx not in visible_idx_values:
+        st.session_state.sim_selected_idx = visible_idx_values[0]
+    if not visible_idx_values:
+        st.session_state.sim_selected_idx = None
+
+    left_col, right_col = st.columns([8, 4])
     feasible_rows: list[dict] = []
-    picked_param = st.query_params.get("pick", None)
-    try:
-        picked_idx = int(picked_param[0] if isinstance(picked_param, list) else picked_param)
-    except Exception:
-        picked_idx = None
 
-    with left_col:
-        st.markdown("##### 현재 전체 시간표")
-        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
-        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
-        if week_count == 0:
-            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
-        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
-
-    # 오른쪽에서 선택/이동 조건을 계산하고, 가능영역은 아래쪽에 추가로 표시한다.
     with right_col:
-        st.markdown("#### 이동 설정")
-        visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy()
+        st.markdown("#### 선택 및 이동 후보")
         if visible_week.empty:
-            st.info("현재 조건에서 선택할 과목이 없습니다.")
+            st.info("현재 조건에서 선택할 과목이 없습니다. 강의실/학년/주차 필터를 확인하세요.")
         else:
-            visible_week = visible_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-            st.markdown("##### 현재 주차 시간표")
-            st.dataframe(
-                visible_week[["과목명", "학년", "요일", "시작", "종료", "강의실"]].copy(),
-                use_container_width=True,
-                hide_index=True,
-            )
+            st.caption("왼쪽 시간표의 과목 블록을 누르면 이 패널과 초록 가능구역이 같이 갱신됩니다.")
             labels = visible_week.apply(
                 lambda r: (
-                    f"[{int(r['시험인덱스'])}] {r['과목명']} ({r['학년']}학년) | "
+                    f"[{int(r['시험인덱스'])}] {r['과목명']} ({format_grade_label(r.get('학년', '-'))}) | "
                     f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}"
                 ),
                 axis=1,
             ).tolist()
-            idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()]
-            default_pick_pos = idx_values.index(picked_idx) if picked_idx in idx_values else 0
+            default_pick_pos = visible_idx_values.index(int(st.session_state.sim_selected_idx)) if st.session_state.sim_selected_idx in visible_idx_values else 0
             selected_label = st.selectbox(
-                "과목 블록 선택",
+                "선택 과목",
                 labels,
                 index=default_pick_pos,
-                key="move_exam_select",
-                help="왼쪽 캘린더의 과목 블록을 눌러도 선택됩니다. 안 되면 여기서 직접 고르면 됩니다.",
+                key=f"move_exam_select_{sim_week_num}_{viz_room}_{viz_grade}",
+                help="왼쪽 블록을 눌러 선택하거나 여기서 직접 선택할 수 있습니다.",
             )
             sel_row = visible_week.iloc[labels.index(selected_label)]
             sel_idx = int(sel_row["시험인덱스"])
-            st.success(f"선택: {sel_row['과목명']} ({sel_row['학년']}학년)")
-
-            sim_week = st.selectbox("이동 주차", [7, 8, 9], index=[7, 8, 9].index(int(sel_row["주차"])), key="sim_week")
+            st.session_state.sim_selected_idx = sel_idx
+            st.success(f"선택: {sel_row['과목명']} ({format_grade_label(sel_row.get('학년', '-'))})")
 
             room_choices = [int(r) for r in ROOM_ORDER]
             default_room = int(sel_row["강의실목록"][0]) if sel_row.get("강의실목록") else room_choices[0]
             sim_room = st.selectbox(
-                "강의실 선택",
+                "이동 강의실",
                 room_choices,
                 index=room_choices.index(default_room) if default_room in room_choices else 0,
                 key="sim_room",
             )
 
-            feasible_html, feasible_rows = build_feasible_area_html(
+            _feasible_html_unused, feasible_rows = build_feasible_area_html(
                 exam_df=exam_df,
                 target_idx=sel_idx,
-                target_week=int(sim_week),
+                target_week=int(sim_week_num),
                 target_room=int(sim_room),
                 student_sets=student_sets,
                 summary=summary,
@@ -1905,12 +1900,11 @@ elif menu == "전체 시간표":
                     )
                     for r in feasible_rows
                 ]
-                candidate_label = st.selectbox("초록 가능 후보 중 선택", candidate_labels, key="sim_candidate")
+                candidate_label = st.selectbox("초록 가능구역 중 선택", candidate_labels, key="sim_candidate")
                 candidate = feasible_rows[candidate_labels.index(candidate_label)]
                 sim_day_label = str(candidate["요일"])
                 sim_day_no = DAY_KO_TO_NUM[sim_day_label]
                 sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
-                st.caption("왼쪽 초록 가능영역 중 하나를 오른쪽에서 선택해 영향 값을 확인합니다.")
             else:
                 st.warning("현재 강의실/주차 조건에서 가능한 초록 후보가 없습니다.")
                 sim_day_label = str(sel_row["요일"])
@@ -1920,44 +1914,45 @@ elif menu == "전체 시간표":
             out = score_move_impact(
                 exam_df=exam_df,
                 target_idx=sel_idx,
-                new_week=int(sim_week),
+                new_week=int(sim_week_num),
                 new_day=int(sim_day_no),
-                new_start=sim_start_slot,
+                new_start=int(sim_start_slot),
                 new_room=int(sim_room),
                 student_sets=student_sets,
                 summary=summary,
             )
 
+            st.markdown("##### 이동 영향 요약")
             if out.get("feasible", False):
-                st.caption(f"현재 입력은 이동 가능 후보입니다. 예상 Δ목적함수 {float(out['objective_delta']):+.4f}")
+                st.success("가능한 이동입니다.")
+                st.markdown(
+                    f"- 선택 과목 수강학생: `{int(out['affected_students'])}`명\n"
+                    f"- 시간변경 합 변화: `{int(out['time_move_delta']):+d}`\n"
+                    f"- 강의실변경 합 변화: `{int(out['room_change_delta']):+d}`\n"
+                    f"- 하루 3개 이상 학생-일 증가: `{int(out['daily3_increase']):+d}`\n"
+                    f"- 하루 4개 이상 학생-일 증가: `{int(out['daily4_increase']):+d}`\n"
+                    f"- 목적함수: `{float(out['objective_before']):.4f}` → `{float(out['objective_after']):.4f}`\n"
+                    f"- 목적함수 변화: `{float(out['objective_delta']):+.4f}`"
+                )
             else:
-                st.warning(f"현재 입력은 불가능합니다: {out.get('reason', '제약 위반')}")
-
-            if st.button("이동안 평가", key="sim_eval_btn"):
-                if out.get("feasible", False):
-                    st.success("가능한 이동입니다.")
-                    st.markdown(
-                        f"- 선택 과목 수강학생: `{int(out['affected_students'])}`명\n"
-                        f"- 시간변경 합 변화: `{int(out['time_move_delta']):+d}`\n"
-                        f"- 강의실변경 합 변화: `{int(out['room_change_delta']):+d}`\n"
-                        f"- 하루 3개 이상 학생-일 증가: `{int(out['daily3_increase']):+d}`\n"
-                        f"- 하루 4개 이상 학생-일 증가: `{int(out['daily4_increase']):+d}`\n"
-                        f"- 목적함수: `{float(out['objective_before']):.4f}` → `{float(out['objective_after']):.4f}`\n"
-                        f"- 목적함수 변화: `{float(out['objective_delta']):+.4f}`"
-                    )
-                else:
-                    st.error(f"불가능: {out.get('reason', '제약 위반')}")
+                st.error(f"불가능: {out.get('reason', '제약 위반')}")
 
             if feasible_rows:
-                st.markdown("##### 선택 후보 요약")
-                st.dataframe(pd.DataFrame(feasible_rows).sort_values("목적함수변화").head(10), use_container_width=True, hide_index=True)
+                st.markdown("##### 후보 상위 10개")
+                st.dataframe(
+                    pd.DataFrame(feasible_rows).sort_values("목적함수변화").head(10),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     with left_col:
-        if feasible_html is not None:
-            st.markdown("##### 선택 과목 이동 가능영역")
-            st.caption("초록색 칸은 현재 선택한 과목을 해당 위치로 옮길 수 있는 후보입니다.")
-            st.markdown(feasible_html, unsafe_allow_html=True)
-
+        st.markdown("##### 현재 전체 시간표")
+        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
+        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개 | 과목 블록을 누르면 같은 표 안에 초록 가능구역이 표시됩니다.")
+        if week_count == 0:
+            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다. 강의실/학년 필터를 확인하세요.")
+        else:
+            render_clickable_calendar(calendar_src, sim_week_num, "overall_calendar", feasible_rows=feasible_rows)
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
@@ -2023,3 +2018,8 @@ elif menu == "최적화 결과":
                 file_name=pdf_path.name,
                 mime="application/pdf",
             )
+
+
+
+
+
