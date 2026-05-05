@@ -10,6 +10,9 @@ import re
 import time
 import os
 import json
+import subprocess
+import sys
+import webbrowser
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
@@ -69,6 +72,8 @@ D_MAX = 0
 T_MAX = 4
 # matplotlib 결과 창 표시 제어
 SHOW_PLOTS = env_int("SHOW_PLOTS", 1)
+OPEN_STREAMLIT = env_int("OPEN_STREAMLIT", 1)
+STREAMLIT_PORT = env_int("STREAMLIT_PORT", 8502)
 TIME_LIMIT_SEC = env_int("TIME_LIMIT_SEC", 0)
 MIP_FOCUS = env_int("MIP_FOCUS", 0)
 
@@ -394,7 +399,7 @@ def show_result_plots(
     ax0.text(
         0.02,
         0.018,
-        "아래 강의실별 창에서는 7/8/9주차 월~금 캘린더 형태로 최적화된 시험 배정을 확인합니다.",
+        "이 창을 닫으면 Streamlit 웹사이트가 열리고, 전체 시간표 캘린더와 학번별 조회를 확인할 수 있습니다.",
         transform=ax0.transAxes,
         fontsize=9.5,
         color="#475569",
@@ -402,78 +407,43 @@ def show_result_plots(
     )
     plt.tight_layout()
 
-    # records: (week, dow, room, start_slot, duration_height, course, time_label)
-    records: list[tuple[int, int, int, int, float, str, str]] = []
-    for i in range(inst["n_exams"]):
-        info = assignment[i]
-        week = int(info["week"])
-        dow = int(info["dow"])
-        start_slot = int(info["slot_idx"])
-        dur_minutes = int(inst["exams"][i].get("dur_minutes", inst["exams"][i]["dur_slots"] * 30))
-        dur_height = dur_minutes / 30.0
-        course = str(inst["exams"][i]["name"])
-        time_label = f"{slot_to_time(start_slot)}~{minute_to_time(9 * 60 + start_slot * 30 + dur_minutes)}"
-        for room in info["rooms"]:
-            records.append((week, dow, int(room), start_slot, dur_height, course, time_label))
-
-    rooms = sorted(set(inst["room_no"]))
-    weeks_fixed = [7, 8, 9]
-    for room in rooms:
-        room_records = [rec for rec in records if rec[2] == room]
-        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(10.5, 9), squeeze=False)
-        fig.suptitle(f"강의실 {room} 시험시간표", fontsize=15, y=0.995)
-        for ridx, week in enumerate(weeks_fixed):
-            ax = axes[ridx][0]
-            # 기본 축
-            ax.set_xlim(0, 5)
-            ax.set_ylim(22, 0)
-            ax.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5])
-            ax.set_xticklabels(["월", "화", "수", "목", "금"], fontsize=8)
-            ax.set_yticks(list(range(0, 22)))
-            ax.set_yticklabels([slot_to_time(s) for s in range(0, 22)], fontsize=6)
-
-            # 격자
-            for x in range(6):
-                ax.axvline(x, color="#aab2bd", linewidth=0.7, zorder=0)
-            for y in range(23):
-                ax.axhline(y, color="#d2d8df", linewidth=0.55, zorder=0)
-
-            # 주차 헤더 색상
-            week_colors = {7: "#f7e7be", 8: "#d8ecf7", 9: "#d9f2d8"}
-            ax.add_patch(Rectangle((0, -0.9), 5, 0.9, facecolor=week_colors.get(week, "#efefef"), edgecolor="#c8c8c8", linewidth=0.7, clip_on=False))
-
-            # ROOM 라벨은 각 ROOM 첫 블록 위에만
-            if week == 7:
-                ax.text(0.0, -1.35, f"강의실 {room}", fontsize=9, fontweight="bold", ha="left", va="bottom", clip_on=False)
-
-            week_start = WEEK_START_DATE.get(week)
-            if week_start:
-                week_end = week_start.fromordinal(week_start.toordinal() + 6)
-                week_label = f"{week}주차  {week_start.month}/{week_start.day} ~ {week_end.month}/{week_end.day}"
-            else:
-                week_label = f"{week}주차"
-            ax.text(0.05, -0.25, week_label, fontsize=7, ha="left", va="center", clip_on=False)
-
-            # 시험 블록
-            wk_records = [r for r in room_records if r[0] == week]
-            for (_, dow, _, start_slot, dur, course, time_label) in wk_records:
-                if dow < 1 or dow > 5:
-                    continue
-                x0 = (dow - 1) + 0.02
-                y0 = start_slot
-                rect = Rectangle((x0, y0), 0.96, dur, facecolor="#dbe8f8", edgecolor="#7f9db9", linewidth=0.8)
-                ax.add_patch(rect)
-                ax.text(x0 + 0.48, y0 + dur / 2, f"{course}\n{time_label}", ha="center", va="center", fontsize=5.0, color="#2a4c68")
-
-            # 테두리
-            for spine in ax.spines.values():
-                spine.set_color("#9aa5b1")
-                spine.set_linewidth(0.8)
-
-        fig.tight_layout(rect=[0, 0, 1, 0.985], h_pad=1.2)
-
-    print("matplotlib 결과 창을 표시합니다. 촬영 후 창을 닫으면 실행이 종료됩니다.")
+    print("matplotlib 최적화 요약 창을 표시합니다. 창을 닫으면 Streamlit 웹사이트가 열립니다.")
     plt.show()
+
+
+def open_streamlit_site() -> None:
+    """최신 JSON 결과를 읽는 Streamlit 조회 사이트를 실행하고 브라우저를 연다."""
+    app_path = BASE_DIR / "app.py"
+    if not app_path.exists():
+        print(f"Streamlit app.py를 찾지 못했습니다: {app_path}")
+        return
+
+    url = f"http://localhost:{STREAMLIT_PORT}"
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "streamlit",
+                "run",
+                str(app_path),
+                "--server.port",
+                str(STREAMLIT_PORT),
+                "--server.headless",
+                "true",
+            ],
+            cwd=str(BASE_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    except Exception as exc:
+        print(f"Streamlit 실행 실패: {exc}")
+        return
+
+    time.sleep(2)
+    print(f"Streamlit 웹사이트 열기: {url}")
+    webbrowser.open(url)
 
 
 def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
@@ -1330,6 +1300,10 @@ def run_exact_18() -> dict | None:
             verify_rows=verify_rows,
             decision_rows=decision_rows,
         )
+
+    if OPEN_STREAMLIT == 1:
+        open_streamlit_site()
+
     return {
         "inst": inst,
         "assignment": assignment,
