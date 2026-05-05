@@ -577,8 +577,11 @@ def score_move_impact(
     date0 = WEEK_START_DATE[int(new_week)] + timedelta(days=int(new_day) - 1)
     sim.loc[mask, "날짜"] = f"{date0.month}/{date0.day}"
     sim.loc[mask, "시작슬롯"] = int(new_start)
-    sim.loc[mask, "종료슬롯"] = float(new_start) + dur_slots
-    sim.loc[mask, "표시종료슬롯"] = float(new_start) + dur_slots
+    # 표시종료슬롯은 75분 같은 시험시간 때문에 2.5처럼 소수 슬롯이 될 수 있다.
+    # 종료슬롯은 표 렌더링용 정수 컬럼이므로 올림 처리해서 pandas int 컬럼 오류를 막는다.
+    display_end_slot = float(new_start) + float(dur_slots)
+    sim.loc[mask, "종료슬롯"] = int(display_end_slot + 0.999999)
+    sim.loc[mask, "표시종료슬롯"] = display_end_slot
     sim.loc[mask, "시작"] = slot_to_time(int(new_start))
     end_mins = int(9 * 60 + int(new_start) * 30 + int(float(trow["시험시간(분)"])))
     sim.loc[mask, "종료"] = minute_to_time(end_mins)
@@ -939,7 +942,7 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
         if day not in DAY_ORDER:
             continue
         s0 = int(r.get("시작슬롯", 0))
-        s1 = int(r.get("종료슬롯", s0))
+        s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
         show_course = r.get("과목명", r.get("과목", ""))
         start_txt = str(r.get("시작", ""))
         end_txt = str(r.get("종료", ""))
@@ -997,7 +1000,7 @@ def build_feasible_area_html(
         if day not in DAY_ORDER:
             continue
         s0 = int(r.get("시작슬롯", 0))
-        s1 = int(r.get("종료슬롯", s0))
+        s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
         show_course = r.get("과목명", r.get("과목", ""))
         grade_txt = str(r.get("학년", "-"))
         for s in range(s0, s1):
@@ -1691,10 +1694,16 @@ elif menu == "전체 시간표":
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
     left_col, right_col = st.columns([8, 4])
+    student_sets = build_exam_student_sets(exam_df, df_is)
+    feasible_html = None
+    feasible_rows: list[dict] = []
+    picked_param = st.query_params.get("pick", None)
+    try:
+        picked_idx = int(picked_param[0] if isinstance(picked_param, list) else picked_param)
+    except Exception:
+        picked_idx = None
 
-    with left_col:
-        st.markdown(build_calendar_html(calendar_src, sim_week_num), unsafe_allow_html=True)
-
+    # 오른쪽에서 선택/이동 조건을 먼저 계산한 뒤, 왼쪽에 원래 캘린더와 초록 가능영역을 함께 표시한다.
     with right_col:
         st.markdown("#### 이동 설정")
         visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy()
@@ -1709,35 +1718,59 @@ elif menu == "전체 시간표":
                 ),
                 axis=1,
             ).tolist()
-            selected_label = st.selectbox("과목 선택", labels, key="move_exam_select")
+            idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()]
+            default_pick_pos = idx_values.index(picked_idx) if picked_idx in idx_values else 0
+            selected_label = st.selectbox(
+                "과목 블록 선택",
+                labels,
+                index=default_pick_pos,
+                key="move_exam_select",
+                help="왼쪽 캘린더의 과목 블록을 눌러도 선택됩니다. 안 되면 여기서 직접 고르면 됩니다.",
+            )
             sel_row = visible_week.iloc[labels.index(selected_label)]
             sel_idx = int(sel_row["시험인덱스"])
             st.success(f"선택: {sel_row['과목명']} ({sel_row['학년']}학년)")
 
             sim_week = st.selectbox("이동 주차", [7, 8, 9], index=[7, 8, 9].index(int(sel_row["주차"])), key="sim_week")
-            sim_day_label = st.selectbox(
-                "이동 요일",
-                ["월", "화", "수", "목", "금"],
-                index=["월", "화", "수", "목", "금"].index(str(sel_row["요일"])),
-                key="sim_day",
-            )
-            time_opts = [slot_to_time(s) for s in range(0, 19)]
-            default_time = slot_to_time(int(sel_row["시작슬롯"]))
-            sim_start_time = st.selectbox("이동 시작시간", time_opts, index=time_opts.index(default_time), key="sim_start_time")
 
-            student_sets = build_exam_student_sets(exam_df, df_is)
-            possible_rooms = get_feasible_rooms_for_week(
+            room_choices = [int(r) for r in ROOM_ORDER]
+            default_room = int(sel_row["강의실목록"][0]) if sel_row.get("강의실목록") else room_choices[0]
+            sim_room = st.selectbox(
+                "강의실 선택",
+                room_choices,
+                index=room_choices.index(default_room) if default_room in room_choices else 0,
+                key="sim_room",
+            )
+
+            feasible_html, feasible_rows = build_feasible_area_html(
                 exam_df=exam_df,
                 target_idx=sel_idx,
                 target_week=int(sim_week),
+                target_room=int(sim_room),
                 student_sets=student_sets,
                 summary=summary,
             )
-            room_choices = possible_rooms if possible_rooms else [int(r) for r in ROOM_ORDER]
-            sim_room = st.selectbox("가능 강의실", room_choices, key="sim_room")
 
-            sim_day_no = DAY_KO_TO_NUM[sim_day_label]
-            sim_start_slot = int((int(sim_start_time.split(":")[0]) * 60 + int(sim_start_time.split(":")[1]) - 540) / 30)
+            if feasible_rows:
+                candidate_labels = [
+                    (
+                        f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | "
+                        f"영향 {r['영향학생수']}명 | Δ목적함수 {float(r['목적함수변화']):+.4f}"
+                    )
+                    for r in feasible_rows
+                ]
+                candidate_label = st.selectbox("초록 가능 후보 중 선택", candidate_labels, key="sim_candidate")
+                candidate = feasible_rows[candidate_labels.index(candidate_label)]
+                sim_day_label = str(candidate["요일"])
+                sim_day_no = DAY_KO_TO_NUM[sim_day_label]
+                sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
+                st.caption("왼쪽 초록 가능영역 중 하나를 오른쪽에서 선택해 영향 값을 확인합니다.")
+            else:
+                st.warning("현재 강의실/주차 조건에서 가능한 초록 후보가 없습니다.")
+                sim_day_label = str(sel_row["요일"])
+                sim_day_no = DAY_KO_TO_NUM[sim_day_label]
+                sim_start_slot = int(sel_row["시작슬롯"])
+
             out = score_move_impact(
                 exam_df=exam_df,
                 target_idx=sel_idx,
@@ -1769,20 +1802,17 @@ elif menu == "전체 시간표":
                 else:
                     st.error(f"불가능: {out.get('reason', '제약 위반')}")
 
-            with st.expander("가능 위치 보기", expanded=False):
-                feasible_html, feasible_rows = build_feasible_area_html(
-                    exam_df=exam_df,
-                    target_idx=sel_idx,
-                    target_week=int(sim_week),
-                    target_room=int(sim_room),
-                    student_sets=student_sets,
-                    summary=summary,
-                )
-                st.markdown(feasible_html, unsafe_allow_html=True)
-                if feasible_rows:
-                    st.dataframe(pd.DataFrame(feasible_rows), use_container_width=True, hide_index=True)
-                else:
-                    st.info("현재 조건에서 가능한 이동 후보가 없습니다.")
+            if feasible_rows:
+                st.markdown("##### 선택 후보 요약")
+                st.dataframe(pd.DataFrame(feasible_rows).sort_values("목적함수변화").head(10), use_container_width=True, hide_index=True)
+
+    with left_col:
+        st.markdown("##### 현재 전체 시간표")
+        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
+        if feasible_html is not None:
+            st.markdown("##### 선택 과목 이동 가능영역")
+            st.caption("초록색 칸은 현재 선택한 과목을 해당 위치로 옮길 수 있는 후보입니다.")
+            st.markdown(feasible_html, unsafe_allow_html=True)
 
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
