@@ -295,7 +295,7 @@ def show_result_plots(
         pass
 
     # 0) 최적화 결과 창: Streamlit의 "최적화 결과" 탭과 같은 순서로 보여준다.
-    fig0, ax0 = plt.subplots(figsize=(15.5, 9))
+    fig0, ax0 = plt.subplots(figsize=(15, 8.5))
     fig0.patch.set_facecolor("#f6f8fb")
     ax0.set_facecolor("#f6f8fb")
     ax0.axis("off")
@@ -327,7 +327,7 @@ def show_result_plots(
     ax0.text(
         0.02,
         0.925,
-        "결정변수 선택 결과, 목적함수 현황, 제약식 위반 여부를 한 화면에서 확인합니다.",
+        "목적함수 현황과 제약식 위반 여부를 한 화면에서 확인합니다.",
         transform=ax0.transAxes,
         fontsize=10.5,
         color="#475569",
@@ -354,25 +354,27 @@ def show_result_plots(
         ["모델 목적값", f"{objective:.4f}"],
     ]
 
-    ax0.text(0.02, 0.755, "목적함수 현황", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
+    ax0.text(0.02, 0.735, "목적함수 현황", transform=ax0.transAxes, fontsize=14, fontweight="bold", color="#111827", va="top")
     tbl_obj = ax0.table(
         cellText=obj_rows,
         colLabels=["항목", "값"],
         colLoc="left",
         cellLoc="left",
-        bbox=[0.02, 0.505, 0.31, 0.225],
+        bbox=[0.02, 0.205, 0.36, 0.490],
     )
     style_table(tbl_obj, header_color="#334155")
+    tbl_obj.set_fontsize(11)
 
-    ax0.text(0.36, 0.755, "제약식 위반사항", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
+    ax0.text(0.43, 0.735, "제약식 위반사항", transform=ax0.transAxes, fontsize=14, fontweight="bold", color="#111827", va="top")
     tbl_chk = ax0.table(
         cellText=verify_rows,
         colLabels=["제약식", "위반건수"],
         colLoc="left",
         cellLoc="left",
-        bbox=[0.36, 0.505, 0.62, 0.225],
+        bbox=[0.43, 0.205, 0.55, 0.490],
     )
     style_table(tbl_chk, header_color="#334155")
+    tbl_chk.set_fontsize(10.5)
     for (row, col), cell in tbl_chk.get_celld().items():
         if row > 0 and col == 1:
             val = cell.get_text().get_text().strip()
@@ -385,23 +387,12 @@ def show_result_plots(
                 cell.get_text().set_color("#166534")
                 cell.get_text().set_fontweight("bold")
 
-    ax0.text(0.02, 0.465, "결정변수 선택 결과", transform=ax0.transAxes, fontsize=13, fontweight="bold", color="#111827", va="top")
-    decision_preview = decision_rows[:18]
-    tbl_dec = ax0.table(
-        cellText=decision_preview,
-        colLabels=["과목", "선택 x_iwdt", "선택 z_iwdtr", "TimeMove_i", "RoomChange_i"],
-        colLoc="left",
-        cellLoc="left",
-        bbox=[0.02, 0.050, 0.96, 0.390],
-    )
-    style_table(tbl_dec, header_color="#111827")
-
     ax0.text(
         0.02,
-        0.018,
-        "이 창을 닫으면 Streamlit 웹사이트가 열리고, 전체 시간표 캘린더와 학번별 조회를 확인할 수 있습니다.",
+        0.075,
+        "결정변수 선택표와 전체 시간표 캘린더는 이 창을 닫은 뒤 자동으로 열리는 Streamlit 웹사이트에서 확인합니다.",
         transform=ax0.transAxes,
-        fontsize=9.5,
+        fontsize=12,
         color="#475569",
         va="bottom",
     )
