@@ -201,7 +201,7 @@ st.markdown(
       border-left:1px solid #cfd8e3;
     }
     .click-grid-cell, .click-grid-time {
-      min-height:54px;
+      min-height:62px;
       border-right:1px solid #cfd8e3;
       border-bottom:1px solid #cfd8e3;
       padding:4px;
@@ -253,10 +253,11 @@ st.markdown(
     }
     div[data-testid="stButton"] button[kind="secondary"] {
       white-space: pre-line !important;
-      min-height:44px !important;
+      min-height:56px !important;
       width:100% !important;
-      line-height:1.15 !important;
-      padding:5px 6px !important;
+      line-height:1.2 !important;
+      padding:6px 6px !important;
+      font-size:12px !important;
       background:#dbeafe !important;
       border:1px solid #60a5fa !important;
       color:#0b1220 !important;
@@ -1413,7 +1414,7 @@ def render_clickable_calendar(
 
     df_w = calendar_df[calendar_df["주차"] == target_week].copy()
     starts = {}
-    cont = set()
+    occ = {}
     for _, r in df_w.iterrows():
         day = str(r.get("요일", ""))
         if day not in DAY_ORDER:
@@ -1421,8 +1422,8 @@ def render_clickable_calendar(
         s0 = int(r.get("시작슬롯", 0))
         s1 = int(r.get("종료슬롯", s0))
         starts[(day, slot_to_time(s0))] = r
-        for s in range(s0 + 1, s1):
-            cont.add((day, slot_to_time(s)))
+        for s in range(s0, s1):
+            occ[(day, slot_to_time(s))] = r
 
     st.markdown(
         "<div class='click-grid-head'><div class='click-grid-cell'>시간</div>"
@@ -1447,17 +1448,14 @@ def render_clickable_calendar(
                     f"{int(feasible_map[key]['영향학생수'])}명 영향</div>",
                     unsafe_allow_html=True,
                 )
-            elif key in starts:
-                r = starts[key]
+            elif key in occ:
+                r = occ[key]
                 exam_idx = int(r["시험인덱스"])
-                grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", r.get("과목명", "")))))
                 selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
                 label = f"{selected_mark}{r['과목명']}\n{r['시작']}~{r['종료']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
                     st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
-            elif key in cont:
-                cols[idx].markdown("<div class='click-grid-cont'></div>", unsafe_allow_html=True)
             else:
                 cols[idx].markdown("<div class='click-grid-cell'></div>", unsafe_allow_html=True)
 
@@ -1891,6 +1889,7 @@ elif menu == "전체 시간표":
 
     with right_col:
         st.markdown("#### 이동 설정")
+        st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
         if visible_week.empty:
             st.info("이 조건에서 표시할 시험이 없습니다.")
         else:
@@ -1981,6 +1980,19 @@ elif menu == "전체 시간표":
                             }
                             st.success("변경 저장 완료")
                             st.rerun()
+        if st.session_state.manual_moves:
+            rows = []
+            for k, mv in st.session_state.manual_moves.items():
+                rows.append(
+                    {
+                        "시험인덱스": int(k),
+                        "주차": int(mv["week"]),
+                        "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
+                        "시작": slot_to_time(int(mv["start_slot"])),
+                        "강의실": int(mv["room"]),
+                    }
+                )
+            st.dataframe(pd.DataFrame(rows).sort_values(["주차", "요일", "시작"]), use_container_width=True, hide_index=True)
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
