@@ -1855,17 +1855,20 @@ elif menu == "전체 시간표":
 
     st.markdown("---")
     st.markdown("#### 전체 시간표 시각화")
-    viz1, viz2, viz3 = st.columns(3)
+    viz1, viz2, viz3, viz4 = st.columns(4)
     with viz1:
         sim_week_view = st.selectbox("주차", ["7주차", "8주차", "9주차"], key="sim_week_view")
     with viz2:
-        viz_grade = st.selectbox("학년", ["전체", "1", "2", "3", "4"], key="overall_viz_grade")
+        viz_room = st.selectbox("강의실", [str(r) for r in ROOM_ORDER], key="overall_viz_room")
     with viz3:
+        viz_grade = st.selectbox("학년", ["전체", "1", "2", "3", "4"], key="overall_viz_grade")
+    with viz4:
         course_options = ["전체"] + sorted(exam_df["과목명"].astype(str).dropna().unique().tolist())
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
     calendar_src = exam_df.copy()
+    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     if viz_grade != "전체":
         calendar_src = calendar_src[calendar_src["학년"].astype(str).str.replace("학년", "", regex=False).str.strip() == str(viz_grade)]
     if viz_course != "전체":
