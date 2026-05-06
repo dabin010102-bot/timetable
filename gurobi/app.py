@@ -1891,12 +1891,12 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 선택 및 이동 후보")
         if visible_week.empty:
-            st.info("선택할 과목이 없습니다.")
+            st.info("이 강의실/주차에는 배정된 시험이 없습니다.")
         else:
             if st.session_state.sim_selected_idx not in idx_values:
-                st.info("왼쪽 시간표의 시험 블록을 먼저 눌러 선택하세요.")
-                sel_row = visible_week.iloc[0]
-                sel_idx = int(sel_row["시험인덱스"])
+                st.info("왼쪽 캘린더에서 시험 블록을 먼저 누르세요.")
+                sel_row = None
+                sel_idx = None
             else:
                 sel_idx = int(st.session_state.sim_selected_idx)
                 sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
@@ -1905,73 +1905,71 @@ elif menu == "전체 시간표":
                     f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
                 )
 
-            room_choices = [int(r) for r in ROOM_ORDER]
-            default_room = int(sel_row["강의실목록"][0]) if sel_row.get("강의실목록") else room_choices[0]
-            sim_room = st.selectbox(
-                "이동 강의실",
-                room_choices,
-                index=room_choices.index(default_room) if default_room in room_choices else 0,
-                key="sim_room",
-            )
-
-            try:
-                feasible_html, feasible_rows = build_feasible_area_html(
-                    exam_df=exam_df,
-                    target_idx=sel_idx,
-                    target_week=int(sim_week_num),
-                    target_room=int(sim_room),
-                    student_sets=student_sets,
-                    summary=summary,
+            if sel_row is not None and sel_idx is not None:
+                room_choices = [int(r) for r in ROOM_ORDER]
+                default_room = int(sel_row["강의실목록"][0]) if sel_row.get("강의실목록") else room_choices[0]
+                sim_room = st.selectbox(
+                    "이동 강의실",
+                    room_choices,
+                    index=room_choices.index(default_room) if default_room in room_choices else 0,
+                    key="sim_room",
                 )
-                if feasible_rows:
-                    candidate_labels = [
-                        f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | 영향 {r['영향학생수']}명 | Δ {float(r['목적함수변화']):+.4f}"
-                        for r in feasible_rows
-                    ]
-                    candidate_label = st.selectbox("초록 가능구역 중 선택", candidate_labels, key="sim_candidate")
-                    candidate = feasible_rows[candidate_labels.index(candidate_label)]
-                    sim_day_no = DAY_KO_TO_NUM[str(candidate["요일"])]
-                    sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
-                else:
-                    candidate = None
-                    sim_day_no = int(sel_row["요일번호"])
-                    sim_start_slot = int(sel_row["시작슬롯"])
-                    st.warning("이 조건에서 가능한 초록 후보가 없습니다.")
 
-                out = score_move_impact(
-                    exam_df=exam_df,
-                    target_idx=sel_idx,
-                    new_week=int(sim_week_num),
-                    new_day=int(sim_day_no),
-                    new_start=int(sim_start_slot),
-                    new_room=int(sim_room),
-                    student_sets=student_sets,
-                    summary=summary,
-                )
-                if out.get("feasible", False):
-                    st.success(f"가능한 이동 | 영향학생 {int(out['affected_students'])}명 | Δ목적함수 {float(out['objective_delta']):+.4f}")
-                else:
-                    st.error(f"불가능: {out.get('reason', '제약 위반')}")
+                try:
+                    feasible_html, feasible_rows = build_feasible_area_html(
+                        exam_df=exam_df,
+                        target_idx=sel_idx,
+                        target_week=int(sim_week_num),
+                        target_room=int(sim_room),
+                        student_sets=student_sets,
+                        summary=summary,
+                    )
+                    if feasible_rows:
+                        candidate_labels = [
+                            f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | 영향 {r['영향학생수']}명 | Δ {float(r['목적함수변화']):+.4f}"
+                            for r in feasible_rows
+                        ]
+                        candidate_label = st.selectbox("초록 가능구역 중 선택", candidate_labels, key="sim_candidate")
+                        candidate = feasible_rows[candidate_labels.index(candidate_label)]
+                        sim_day_no = DAY_KO_TO_NUM[str(candidate["요일"])]
+                        sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
+                    else:
+                        candidate = None
+                        sim_day_no = int(sel_row["요일번호"])
+                        sim_start_slot = int(sel_row["시작슬롯"])
+                        st.warning("이 조건에서 가능한 초록 후보가 없습니다.")
 
-                selected_candidate = candidate if feasible_rows else None
-            except Exception as e:
-                st.error(f"이동 후보 계산 오류: {e}")
-                feasible_rows = []
-                selected_candidate = None
+                    out = score_move_impact(
+                        exam_df=exam_df,
+                        target_idx=sel_idx,
+                        new_week=int(sim_week_num),
+                        new_day=int(sim_day_no),
+                        new_start=int(sim_start_slot),
+                        new_room=int(sim_room),
+                        student_sets=student_sets,
+                        summary=summary,
+                    )
+                    if out.get("feasible", False):
+                        st.success(f"가능한 이동 | 영향학생 {int(out['affected_students'])}명 | Δ목적함수 {float(out['objective_delta']):+.4f}")
+                    else:
+                        st.error(f"불가능: {out.get('reason', '제약 위반')}")
+
+                    selected_candidate = candidate if feasible_rows else None
+                except Exception as e:
+                    st.error(f"이동 후보 계산 오류: {e}")
+                    feasible_rows = []
+                    selected_candidate = None
     with left_col:
         st.markdown("##### 현재 전체 시간표")
         week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
         st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
-        if week_count == 0:
-            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다.")
-        else:
-            render_clickable_calendar(
-                calendar_src,
-                sim_week_num,
-                "overall_calendar",
-                feasible_rows=feasible_rows,
-                selected_candidate=selected_candidate,
-            )
+        render_clickable_calendar(
+            calendar_src,
+            sim_week_num,
+            "overall_calendar",
+            feasible_rows=feasible_rows,
+            selected_candidate=selected_candidate,
+        )
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
