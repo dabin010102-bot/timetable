@@ -1908,8 +1908,26 @@ elif menu == "전체 시간표":
             if st.session_state.sim_selected_idx not in idx_values:
                 with tab_t:
                     st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
+                    fallback_labels = visible_week.apply(
+                        lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']}",
+                        axis=1,
+                    ).tolist()
+                    fb_pick = st.selectbox("블록 클릭이 안되면 여기서 과목 선택", fallback_labels, key="fallback_pick_exam_t")
+                    fb_idx = int(fb_pick.split("]")[0].replace("[", ""))
+                    if st.button("이 과목 선택", key="fallback_select_btn_t"):
+                        st.session_state.sim_selected_idx = fb_idx
+                        st.rerun()
                 with tab_r:
                     st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
+                    fallback_labels = visible_week.apply(
+                        lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']}",
+                        axis=1,
+                    ).tolist()
+                    fb_pick = st.selectbox("블록 클릭이 안되면 여기서 과목 선택", fallback_labels, key="fallback_pick_exam_r")
+                    fb_idx = int(fb_pick.split("]")[0].replace("[", ""))
+                    if st.button("이 과목 선택", key="fallback_select_btn_r"):
+                        st.session_state.sim_selected_idx = fb_idx
+                        st.rerun()
             else:
                 sel_idx = int(st.session_state.sim_selected_idx)
                 sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
@@ -1934,6 +1952,7 @@ elif menu == "전체 시간표":
                     key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
                     uniq[key] = r
                 feasible_rows = list(uniq.values())
+                st.caption(f"가능 후보 수: {len(feasible_rows)}")
 
                 # 후보가 비어도 현재 배정안은 최소 1개 후보로 노출해 이동 UI가 비지 않게 한다.
                 if not feasible_rows:
