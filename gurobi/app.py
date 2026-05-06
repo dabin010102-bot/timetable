@@ -1876,37 +1876,33 @@ elif menu == "전체 시간표":
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
     left_col, right_col = st.columns([8, 4])
-    with left_col:
-        st.markdown("##### 현재 전체 시간표")
-        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
-        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
-        if week_count == 0:
-            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다.")
-        else:
-            st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
-
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    if "sim_selected_idx" not in st.session_state:
+        st.session_state.sim_selected_idx = None
+    idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()] if not visible_week.empty else []
+    if idx_values and st.session_state.sim_selected_idx not in idx_values:
+        st.session_state.sim_selected_idx = idx_values[0]
+    if not idx_values:
+        st.session_state.sim_selected_idx = None
 
-    picked_param = st.query_params.get("pick", None)
-    try:
-        picked_idx = int(picked_param[0] if isinstance(picked_param, list) else picked_param)
-    except Exception:
-        picked_idx = None
-
+    feasible_rows = []
+    selected_candidate = None
     with right_col:
         st.markdown("#### 선택 및 이동 후보")
         if visible_week.empty:
             st.info("선택할 과목이 없습니다.")
         else:
-            labels = visible_week.apply(
-                lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}",
-                axis=1,
-            ).tolist()
-            idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()]
-            default_pick_pos = idx_values.index(picked_idx) if picked_idx in idx_values else 0
-            selected_label = st.selectbox("선택 과목", labels, index=default_pick_pos, key="move_exam_select")
-            sel_row = visible_week.iloc[labels.index(selected_label)]
-            sel_idx = int(sel_row["시험인덱스"])
+            if st.session_state.sim_selected_idx not in idx_values:
+                st.info("왼쪽 시간표의 시험 블록을 먼저 눌러 선택하세요.")
+                sel_row = visible_week.iloc[0]
+                sel_idx = int(sel_row["시험인덱스"])
+            else:
+                sel_idx = int(st.session_state.sim_selected_idx)
+                sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
+                st.markdown(
+                    f"선택 과목: **{sel_row['과목명']}**  \n"
+                    f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
+                )
 
             room_choices = [int(r) for r in ROOM_ORDER]
             default_room = int(sel_row["강의실목록"][0]) if sel_row.get("강의실목록") else room_choices[0]
@@ -1956,12 +1952,25 @@ elif menu == "전체 시간표":
                 else:
                     st.error(f"불가능: {out.get('reason', '제약 위반')}")
 
-                with left_col:
-                    if week_count > 0:
-                        st.markdown("##### 이동 가능구역(초록)")
-                        st.markdown(feasible_html, unsafe_allow_html=True)
+                selected_candidate = candidate if feasible_rows else None
             except Exception as e:
                 st.error(f"이동 후보 계산 오류: {e}")
+                feasible_rows = []
+                selected_candidate = None
+    with left_col:
+        st.markdown("##### 현재 전체 시간표")
+        week_count = int((calendar_src["주차"] == sim_week_num).sum()) if "주차" in calendar_src.columns else 0
+        st.caption(f"{sim_week_num}주차 표시 시험 수: {week_count}개")
+        if week_count == 0:
+            st.warning("현재 필터 조건에서 이 주차에 표시할 시험이 없습니다.")
+        else:
+            render_clickable_calendar(
+                calendar_src,
+                sim_week_num,
+                "overall_calendar",
+                feasible_rows=feasible_rows,
+                selected_candidate=selected_candidate,
+            )
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
