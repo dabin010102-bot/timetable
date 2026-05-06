@@ -1646,6 +1646,7 @@ summary = payload.get("summary", {})
 # UI
 # -------------------------------------------------
 st.title("INUTimetable")
+st.caption("빌드: 66aea8a-hotfix")
 st.caption("최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화")
 
 with st.sidebar:
@@ -1890,12 +1891,19 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
+        tab_t, tab_r = st.tabs(["시간이동", "강의실이동"])
         if visible_week.empty:
-            st.info("이 조건에서 표시할 시험이 없습니다.")
+            with tab_t:
+                st.info("이 조건에서 표시할 시험이 없습니다.")
+            with tab_r:
+                st.info("이 조건에서 표시할 시험이 없습니다.")
         else:
             idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()]
             if st.session_state.sim_selected_idx not in idx_values:
-                st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
+                with tab_t:
+                    st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
+                with tab_r:
+                    st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
             else:
                 sel_idx = int(st.session_state.sim_selected_idx)
                 sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
@@ -1922,11 +1930,13 @@ elif menu == "전체 시간표":
                 feasible_rows = list(uniq.values())
 
                 if not feasible_rows:
-                    st.warning("가능한 이동안이 없습니다.")
+                    with tab_t:
+                        st.warning("가능한 이동안이 없습니다.")
+                    with tab_r:
+                        st.warning("가능한 이동안이 없습니다.")
                 else:
                     time_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in feasible_rows})
                     room_opts = sorted({str(int(r["강의실"])) for r in feasible_rows}, key=lambda x: int(x))
-                    tab_t, tab_r = st.tabs(["시간이동", "강의실이동"])
                     cand = None
                     with tab_t:
                         tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
