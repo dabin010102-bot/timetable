@@ -1414,7 +1414,7 @@ def render_clickable_calendar(
 
     df_w = calendar_df[calendar_df["주차"] == target_week].copy()
     starts = {}
-    occ = {}
+    cont = set()
     for _, r in df_w.iterrows():
         day = str(r.get("요일", ""))
         if day not in DAY_ORDER:
@@ -1422,8 +1422,8 @@ def render_clickable_calendar(
         s0 = int(r.get("시작슬롯", 0))
         s1 = int(r.get("종료슬롯", s0))
         starts[(day, slot_to_time(s0))] = r
-        for s in range(s0, s1):
-            occ[(day, slot_to_time(s))] = r
+        for s in range(s0 + 1, s1):
+            cont.add((day, slot_to_time(s)))
 
     st.markdown(
         "<div class='click-grid-head'><div class='click-grid-cell'>시간</div>"
@@ -1448,14 +1448,16 @@ def render_clickable_calendar(
                     f"{int(feasible_map[key]['영향학생수'])}명 영향</div>",
                     unsafe_allow_html=True,
                 )
-            elif key in occ:
-                r = occ[key]
+            elif key in starts:
+                r = starts[key]
                 exam_idx = int(r["시험인덱스"])
                 selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
-                label = f"{selected_mark}{r['과목명']}\n{r['시작']}~{r['종료']}"
+                label = f"{selected_mark}{r['과목명']}\n{r['강의실']}\n{r['시작']}~{r['종료']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
                     st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
+            elif key in cont:
+                cols[idx].markdown("<div class='click-grid-cont'></div>", unsafe_allow_html=True)
             else:
                 cols[idx].markdown("<div class='click-grid-cell'></div>", unsafe_allow_html=True)
 
