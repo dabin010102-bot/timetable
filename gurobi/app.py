@@ -1648,7 +1648,7 @@ summary = payload.get("summary", {})
 # UI
 # -------------------------------------------------
 st.title("INUTimetable")
-st.caption("빌드: 66aea8a-hotfix")
+st.caption("빌드: 5c1a2ac-final")
 st.caption("최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화")
 
 with st.sidebar:
