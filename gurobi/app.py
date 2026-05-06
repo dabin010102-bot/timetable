@@ -1852,6 +1852,10 @@ elif menu == "전체 시간표":
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
+    current_filter_sig = f"{sim_week_num}|{viz_room}|{viz_grade}|{viz_course}"
+    if st.session_state.get("sim_filter_sig") != current_filter_sig:
+        st.session_state.sim_filter_sig = current_filter_sig
+        st.session_state.sim_selected_idx = None
     calendar_src = exam_df_view.copy()
     calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     if viz_grade != "전체":
@@ -1930,6 +1934,36 @@ elif menu == "전체 시간표":
                     key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
                     uniq[key] = r
                 feasible_rows = list(uniq.values())
+
+                # 후보가 비어도 현재 배정안은 최소 1개 후보로 노출해 이동 UI가 비지 않게 한다.
+                if not feasible_rows:
+                    cur_day_no = int(sel_row["요일번호"])
+                    cur_start_slot = int(sel_row["시작슬롯"])
+                    cur_room = int(str(sel_row["강의실"]).split()[0])
+                    cur_out = score_move_impact(
+                        exam_df=exam_df_view,
+                        target_idx=sel_idx,
+                        new_week=int(sim_week_num),
+                        new_day=int(cur_day_no),
+                        new_start=int(cur_start_slot),
+                        new_room=int(cur_room),
+                        student_sets=student_sets,
+                        summary=summary,
+                    )
+                    if cur_out.get("feasible", False):
+                        dur_slots = int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]))
+                        feasible_rows.append(
+                            {
+                                "요일": str(sel_row["요일"]),
+                                "시작": str(sel_row["시작"]),
+                                "종료": slot_to_time(int(cur_start_slot + dur_slots)),
+                                "강의실": int(cur_room),
+                                "영향학생수": int(cur_out.get("affected_students", 0)),
+                                "하루3개증가": int(cur_out.get("daily3_increase", 0)),
+                                "하루4개증가": int(cur_out.get("daily4_increase", 0)),
+                                "목적함수변화": float(cur_out.get("objective_delta", 0.0)),
+                            }
+                        )
 
                 if not feasible_rows:
                     with tab_t:
