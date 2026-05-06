@@ -1811,6 +1811,10 @@ elif menu == "전체 시간표":
 
     if "manual_moves" not in st.session_state:
         st.session_state.manual_moves = {}
+    if "manual_move_history" not in st.session_state:
+        st.session_state.manual_move_history = []
+    if "sim_selected_idx" not in st.session_state:
+        st.session_state.sim_selected_idx = None
 
     def _apply_manual_moves(df_src: pd.DataFrame) -> pd.DataFrame:
         out = df_src.copy()
@@ -1855,10 +1859,32 @@ elif menu == "전체 시간표":
         calendar_src = calendar_src[calendar_src["과목명"].astype(str) == str(viz_course)]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
+    ctl1, ctl2 = st.columns([1, 1])
+    with ctl1:
+        if st.button("초기화(구로비 원본)", key="reset_to_gurobi_btn"):
+            st.session_state.manual_moves = {}
+            st.session_state.manual_move_history = []
+            st.session_state.sim_selected_idx = None
+            st.rerun()
+    with ctl2:
+        if st.button("이전(방금 작업 취소)", key="undo_last_move_btn"):
+            if st.session_state.manual_move_history:
+                item = st.session_state.manual_move_history.pop()
+                idx_key = str(item["idx"])
+                prev = item["prev"]
+                if prev is None:
+                    st.session_state.manual_moves.pop(idx_key, None)
+                else:
+                    st.session_state.manual_moves[idx_key] = prev
+                st.rerun()
+            else:
+                st.info("되돌릴 작업이 없습니다.")
+
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        st.markdown(build_calendar_html(calendar_src, sim_week_num), unsafe_allow_html=True)
+        # 블록 클릭으로 과목 선택
+        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
@@ -1868,83 +1894,93 @@ elif menu == "전체 시간표":
         if visible_week.empty:
             st.info("이 조건에서 표시할 시험이 없습니다.")
         else:
-            labels = visible_week.apply(
-                lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}",
-                axis=1,
-            ).tolist()
-            pick = st.selectbox("이동 대상 과목", labels, key="move_exam_select")
-            sel_row = visible_week.iloc[labels.index(pick)]
-            sel_idx = int(sel_row["시험인덱스"])
-
-            all_rows = []
-            for room in ROOM_ORDER:
-                _h, rows = build_feasible_area_html(
-                    exam_df=exam_df_view,
-                    target_idx=sel_idx,
-                    target_week=int(sim_week_num),
-                    target_room=int(room),
-                    student_sets=student_sets,
-                    summary=summary,
-                )
-                all_rows.extend(rows)
-            uniq = {}
-            for r in all_rows:
-                key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
-                uniq[key] = r
-            feasible_rows = list(uniq.values())
-
-            if not feasible_rows:
-                st.warning("가능한 이동안이 없습니다.")
+            idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()]
+            if st.session_state.sim_selected_idx not in idx_values:
+                st.info("왼쪽 캘린더에서 이동할 과목 블록을 먼저 클릭하세요.")
             else:
-                time_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in feasible_rows})
-                room_opts = sorted({str(int(r["강의실"])) for r in feasible_rows}, key=lambda x: int(x))
-                tsel = st.selectbox("가능한 시간", ["전체"] + time_opts, key="sim_time_filter")
-                rsel = st.selectbox("가능한 강의실", ["전체"] + room_opts, key="sim_room_filter")
+                sel_idx = int(st.session_state.sim_selected_idx)
+                sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
+                st.markdown(
+                    f"선택 과목: **{sel_row['과목명']}**  \n"
+                    f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
+                )
 
-                filtered = feasible_rows
-                if tsel != "전체":
-                    filtered = [r for r in filtered if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel]
-                if rsel != "전체":
-                    filtered = [r for r in filtered if str(int(r["강의실"])) == rsel]
-
-                if not filtered:
-                    st.warning("선택한 조건의 이동안이 없습니다.")
-                else:
-                    cand_labels = [
-                        f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | 영향 {r['영향학생수']}명 | Δ {float(r['목적함수변화']):+.4f}"
-                        for r in filtered
-                    ]
-                    csel = st.selectbox("저장할 이동안", cand_labels, key="sim_candidate")
-                    cand = filtered[cand_labels.index(csel)]
-                    sim_day_no = DAY_KO_TO_NUM[str(cand["요일"])]
-                    sim_start_slot = int((int(str(cand["시작"]).split(":")[0]) * 60 + int(str(cand["시작"]).split(":")[1]) - 540) / 30)
-                    sim_room = int(cand["강의실"])
-
-                    out = score_move_impact(
+                all_rows = []
+                for room in ROOM_ORDER:
+                    _h, rows = build_feasible_area_html(
                         exam_df=exam_df_view,
                         target_idx=sel_idx,
-                        new_week=int(sim_week_num),
-                        new_day=int(sim_day_no),
-                        new_start=int(sim_start_slot),
-                        new_room=int(sim_room),
+                        target_week=int(sim_week_num),
+                        target_room=int(room),
                         student_sets=student_sets,
                         summary=summary,
                     )
-                    st.markdown("#### 영향 요약")
-                    st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
-                    st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
-                    st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
-                    st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
+                    all_rows.extend(rows)
+                uniq = {}
+                for r in all_rows:
+                    key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
+                    uniq[key] = r
+                feasible_rows = list(uniq.values())
 
-                    if st.button("시간표 변경 저장", key="save_move_btn"):
-                        st.session_state.manual_moves[str(sel_idx)] = {
-                            "week": int(sim_week_num),
-                            "day": int(sim_day_no),
-                            "start_slot": int(sim_start_slot),
-                            "room": int(sim_room),
-                        }
-                        st.success("변경 저장 완료")
-                        st.rerun()
+                if not feasible_rows:
+                    st.warning("가능한 이동안이 없습니다.")
+                else:
+                    time_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in feasible_rows})
+                    room_opts = sorted({str(int(r["강의실"])) for r in feasible_rows}, key=lambda x: int(x))
+                    tab_t, tab_r = st.tabs(["시간이동", "강의실이동"])
+                    cand = None
+                    with tab_t:
+                        tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                        time_filtered = [r for r in feasible_rows if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel]
+                        room_filtered_opts = sorted({str(int(r["강의실"])) for r in time_filtered}, key=lambda x: int(x))
+                        rsel = st.selectbox("가능한 강의실", room_filtered_opts, key="sim_room_filter_by_time")
+                        cands = [r for r in time_filtered if str(int(r["강의실"])) == rsel]
+                        if cands:
+                            cand = cands[0]
+                    with tab_r:
+                        rsel2 = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter")
+                        room_filtered = [r for r in feasible_rows if str(int(r["강의실"])) == rsel2]
+                        time_filtered_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in room_filtered})
+                        tsel2 = st.selectbox("가능한 시간", time_filtered_opts, key="sim_time_filter_by_room")
+                        cands2 = [r for r in room_filtered if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel2]
+                        if cands2:
+                            cand = cands2[0]
+
+                    if cand is None:
+                        st.warning("선택한 조건의 이동안이 없습니다.")
+                    else:
+                        st.caption(f"선택 이동안: {cand['요일']} {cand['시작']}~{cand['종료']} / {cand['강의실']}호")
+                        sim_day_no = DAY_KO_TO_NUM[str(cand["요일"])]
+                        sim_start_slot = int((int(str(cand["시작"]).split(":")[0]) * 60 + int(str(cand["시작"]).split(":")[1]) - 540) / 30)
+                        sim_room = int(cand["강의실"])
+
+                        out = score_move_impact(
+                            exam_df=exam_df_view,
+                            target_idx=sel_idx,
+                            new_week=int(sim_week_num),
+                            new_day=int(sim_day_no),
+                            new_start=int(sim_start_slot),
+                            new_room=int(sim_room),
+                            student_sets=student_sets,
+                            summary=summary,
+                        )
+                        st.markdown("#### 영향 요약")
+                        st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
+                        st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
+                        st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
+                        st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
+
+                        if st.button("시간표 변경 저장", key="save_move_btn"):
+                            prev_state = st.session_state.manual_moves.get(str(sel_idx))
+                            st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
+                            st.session_state.manual_moves[str(sel_idx)] = {
+                                "week": int(sim_week_num),
+                                "day": int(sim_day_no),
+                                "start_slot": int(sim_start_slot),
+                                "room": int(sim_room),
+                            }
+                            st.success("변경 저장 완료")
+                            st.rerun()
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
