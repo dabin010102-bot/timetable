@@ -1916,28 +1916,57 @@ elif menu == "전체 시간표":
                 )
 
                 try:
-                    feasible_html, feasible_rows = build_feasible_area_html(
-                        exam_df=exam_df,
-                        target_idx=sel_idx,
-                        target_week=int(sim_week_num),
-                        target_room=int(sim_room),
-                        student_sets=student_sets,
-                        summary=summary,
-                    )
+                    all_candidates = []
+                    for room in ROOM_ORDER:
+                        _html_unused, rows = build_feasible_area_html(
+                            exam_df=exam_df,
+                            target_idx=sel_idx,
+                            target_week=int(sim_week_num),
+                            target_room=int(room),
+                            student_sets=student_sets,
+                            summary=summary,
+                        )
+                        all_candidates.extend(rows)
+
+                    # 중복 제거
+                    uniq = {}
+                    for r in all_candidates:
+                        key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
+                        uniq[key] = r
+                    feasible_rows = list(uniq.values())
+
                     if feasible_rows:
-                        candidate_labels = [
-                            f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | 영향 {r['영향학생수']}명 | Δ {float(r['목적함수변화']):+.4f}"
-                            for r in feasible_rows
-                        ]
-                        candidate_label = st.selectbox("초록 가능구역 중 선택", candidate_labels, key="sim_candidate")
-                        candidate = feasible_rows[candidate_labels.index(candidate_label)]
-                        sim_day_no = DAY_KO_TO_NUM[str(candidate["요일"])]
-                        sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
+                        time_tokens = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in feasible_rows})
+                        room_tokens = sorted({str(int(r["강의실"])) for r in feasible_rows}, key=lambda x: int(x))
+                        sel_time = st.selectbox("가능한 시간", ["전체"] + time_tokens, key="sim_time_filter")
+                        sel_room2 = st.selectbox("가능한 강의실", ["전체"] + room_tokens, key="sim_room_filter")
+
+                        filtered = feasible_rows
+                        if sel_time != "전체":
+                            filtered = [r for r in filtered if f"{r['요일']} {r['시작']}~{r['종료']}" == sel_time]
+                        if sel_room2 != "전체":
+                            filtered = [r for r in filtered if str(int(r["강의실"])) == str(sel_room2)]
+
+                        if filtered:
+                            candidate_labels = [
+                                f"{r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}호 | 영향 {r['영향학생수']}명 | Δ {float(r['목적함수변화']):+.4f}"
+                                for r in filtered
+                            ]
+                            candidate_label = st.selectbox("이동안 선택", candidate_labels, key="sim_candidate")
+                            candidate = filtered[candidate_labels.index(candidate_label)]
+                            sim_day_no = DAY_KO_TO_NUM[str(candidate["요일"])]
+                            sim_start_slot = int((int(str(candidate["시작"]).split(":")[0]) * 60 + int(str(candidate["시작"]).split(":")[1]) - 540) / 30)
+                            sim_room = int(candidate["강의실"])
+                        else:
+                            candidate = None
+                            sim_day_no = int(sel_row["요일번호"])
+                            sim_start_slot = int(sel_row["시작슬롯"])
+                            st.warning("현재 선택(시간/강의실) 조합에서 가능한 이동안이 없습니다.")
                     else:
                         candidate = None
                         sim_day_no = int(sel_row["요일번호"])
                         sim_start_slot = int(sel_row["시작슬롯"])
-                        st.warning("이 조건에서 가능한 초록 후보가 없습니다.")
+                        st.warning("이 과목은 현재 주차에서 이동 가능한 시간/강의실 조합이 없습니다.")
 
                     out = score_move_impact(
                         exam_df=exam_df,
@@ -1967,8 +1996,8 @@ elif menu == "전체 시간표":
             calendar_src,
             sim_week_num,
             "overall_calendar",
-            feasible_rows=feasible_rows,
-            selected_candidate=selected_candidate,
+            feasible_rows=[],
+            selected_candidate=None,
         )
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
