@@ -1888,8 +1888,14 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 블록 클릭으로 과목 선택
-        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
+        # 학번별 검색의 "시각화 파일"과 동일한 강의실 PNG를 우선 사용한다.
+        selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
+        if selected_room_path_overall is not None and selected_room_path_overall.exists():
+            st.image(str(selected_room_path_overall), use_container_width=True)
+            st.caption(f"강의실 {viz_room} 시각화 파일")
+        else:
+            # PNG가 없을 때만 앱 내 그리드로 대체
+            render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
