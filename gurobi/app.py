@@ -1858,8 +1858,6 @@ elif menu == "전체 시간표":
     viz1, viz2, viz3, viz4 = st.columns(4)
     with viz1:
         sim_week_view = st.selectbox("주차", ["7주차", "8주차", "9주차"], key="sim_week_view")
-    with viz2:
-        viz_room = st.selectbox("강의실", [str(r) for r in ROOM_ORDER], key="overall_viz_room")
     with viz3:
         viz_grade = st.selectbox("학년", ["전체", "1", "2", "3", "4"], key="overall_viz_grade")
     with viz4:
@@ -1867,12 +1865,22 @@ elif menu == "전체 시간표":
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
-    calendar_src = exam_df.copy()
-    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
+    room_base = exam_df.copy()
     if viz_grade != "전체":
-        calendar_src = calendar_src[calendar_src["학년"].astype(str).str.replace("학년", "", regex=False).str.strip() == str(viz_grade)]
+        room_base = room_base[room_base["학년"].astype(str).str.replace("학년", "", regex=False).str.strip() == str(viz_grade)]
     if viz_course != "전체":
-        calendar_src = calendar_src[calendar_src["과목명"].astype(str) == str(viz_course)]
+        room_base = room_base[room_base["과목명"].astype(str) == str(viz_course)]
+    week_base = room_base[room_base["주차"] == sim_week_num].copy()
+    available_rooms = []
+    for r in ROOM_ORDER:
+        if not week_base[week_base["강의실목록"].apply(lambda xs: int(r) in set(xs))].empty:
+            available_rooms.append(str(r))
+    if not available_rooms:
+        available_rooms = [str(r) for r in ROOM_ORDER]
+    with viz2:
+        viz_room = st.selectbox("강의실", available_rooms, key="overall_viz_room")
+
+    calendar_src = room_base[room_base["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df, df_is)
 
@@ -1881,9 +1889,7 @@ elif menu == "전체 시간표":
     if "sim_selected_idx" not in st.session_state:
         st.session_state.sim_selected_idx = None
     idx_values = [int(x) for x in visible_week["시험인덱스"].tolist()] if not visible_week.empty else []
-    if idx_values and st.session_state.sim_selected_idx not in idx_values:
-        st.session_state.sim_selected_idx = idx_values[0]
-    if not idx_values:
+    if st.session_state.sim_selected_idx not in idx_values:
         st.session_state.sim_selected_idx = None
 
     feasible_rows = []
