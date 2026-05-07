@@ -188,7 +188,7 @@ st.markdown(
     }
     .click-grid-head {
       display:grid;
-      grid-template-columns: 70px repeat(5, minmax(70px, 1fr));
+      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
       border-top:1px solid #cfd8e3;
       border-left:1px solid #cfd8e3;
       background:#dbe7f9;
@@ -197,7 +197,7 @@ st.markdown(
     }
     .click-grid-row {
       display:grid;
-      grid-template-columns: 70px repeat(5, minmax(70px, 1fr));
+      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
       border-left:1px solid #cfd8e3;
     }
     .click-grid-cell, .click-grid-time {
@@ -268,10 +268,6 @@ st.markdown(
       background:#bfdbfe !important;
       border-color:#2563eb !important;
       color:#0b1220 !important;
-    }
-    .click-grid-wrap{
-      overflow-x:auto;
-      padding-bottom:6px;
     }
     .result-table-wrap {overflow-x:auto; margin-top:10px;}
     .result-table {width:100%; border-collapse:collapse; font-size:14px; background:#ffffff;}
@@ -452,7 +448,7 @@ def find_existing_dir(candidates: list[Path]) -> Path | None:
 def load_result_payload() -> tuple[dict, Path]:
     p = find_existing_path(RESULT_JSON_CANDIDATES, prefer_latest=True)
     if p is None:
-        raise FileNotFoundError("결과 JSON 파일을 찾지 못했습니다. 먼저 gurobi.py를 실행하세요.")
+        raise FileNotFoundError("결과 JSON 파일을 찾지 못했습니다. 먼저 gurobl.py를 실행하세요.")
     return json.loads(p.read_text(encoding="utf-8")), p
 
 
@@ -634,9 +630,6 @@ def score_move_impact(
 
     dur_slots = float(trow["표시종료슬롯"]) - float(trow["시작슬롯"])
     new_end = float(new_start) + dur_slots
-    # 시간 슬롯 경계(09:00=0, 마지막 표시 슬롯은 22)
-    if float(new_start) < 0 or float(new_end) > 22:
-        return {"feasible": False, "reason": "시간 범위를 벗어납니다."}
 
     # 1) 강의실 중복 체크
     room_conflicts = []
@@ -698,8 +691,7 @@ def score_move_impact(
     sim.loc[mask, "시작"] = slot_to_time(int(new_start))
     end_mins = int(9 * 60 + int(new_start) * 30 + int(float(trow["시험시간(분)"])))
     sim.loc[mask, "종료"] = minute_to_time(end_mins)
-    # 강의실목록은 각 행이 list[int] 형태여야 한다.
-    sim.loc[mask, "강의실목록"] = [[int(new_room)] for _ in range(int(mask.sum()))]
+    sim.loc[mask, "강의실목록"] = [[int(new_room)]]
     sim.loc[mask, "강의실"] = str(int(new_room))
 
     # 변경 건수/영향
@@ -1142,19 +1134,13 @@ def build_feasible_area_html(
     feasible_rows: list[dict] = []
     cell_delta: dict[tuple[str, str], float] = {}
     day_labels = ["월", "화", "수", "목", "금"]
-    # 표시종료슬롯은 2.5처럼 소수 슬롯일 수 있어, 후보 영역 표시에서는 올림해서 블록이 끊기지 않게 한다.
     duration_slots = int(
-        (
-            float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
-            - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
-        )
-        + 0.999999
+        float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
+        - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
     )
     for d in day_labels:
         dnum = DAY_KO_TO_NUM[d]
-        # 종료가 22를 넘지 않도록 시작 슬롯 범위를 제한
-        max_start = max(0, 22 - int(duration_slots))
-        for st_slot in range(0, max_start + 1):
+        for st_slot in range(0, 19):
             out = score_move_impact(
                 exam_df=exam_df,
                 target_idx=int(target_idx),
@@ -1434,13 +1420,11 @@ def render_clickable_calendar(
         if day not in DAY_ORDER:
             continue
         s0 = int(r.get("시작슬롯", 0))
-        # 표시종료슬롯이 2.5 같은 소수 슬롯일 수 있어서, 클릭 그리드에서는 올림해서 연속칸을 맞춘다.
-        s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
+        s1 = int(r.get("종료슬롯", s0))
         starts[(day, slot_to_time(s0))] = r
         for s in range(s0 + 1, s1):
             cont.add((day, slot_to_time(s)))
 
-    st.markdown("<div class='click-grid-wrap'>", unsafe_allow_html=True)
     st.markdown(
         "<div class='click-grid-head'><div class='click-grid-cell'>시간</div>"
         + "".join(f"<div class='click-grid-cell'>{d}</div>" for d in DAY_ORDER)
@@ -1470,17 +1454,12 @@ def render_clickable_calendar(
                 selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
                 label = f"{selected_mark}{r['과목명']}\n{r['강의실']}\n{r['시작']}~{r['종료']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
-                    # 같은 블록을 다시 누르면 선택 해제
-                    if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx:
-                        st.session_state.sim_selected_idx = None
-                    else:
-                        st.session_state.sim_selected_idx = exam_idx
+                    st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
             elif key in cont:
                 cols[idx].markdown("<div class='click-grid-cont'></div>", unsafe_allow_html=True)
             else:
                 cols[idx].markdown("<div class='click-grid-cell'></div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_room_calendar_fallback(exam_df_src: pd.DataFrame, room_no: int, key_prefix: str):
@@ -1909,15 +1888,14 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 전체 시간표에서는 "블록 클릭"이 핵심이므로, PNG가 있더라도 클릭 가능한 그리드를 항상 보여준다.
-        # (PNG는 참고용으로 expander에 넣어둔다.)
-        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
-
+        # 학번별 검색의 "시각화 파일"과 동일한 강의실 PNG를 우선 사용한다.
         selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
         if selected_room_path_overall is not None and selected_room_path_overall.exists():
-            with st.expander(f"참고 이미지 보기 (강의실 {viz_room})", expanded=False):
-                st.image(str(selected_room_path_overall), use_container_width=True)
-                st.caption(f"강의실 {viz_room} 시각화 파일")
+            st.image(str(selected_room_path_overall), use_container_width=True)
+            st.caption(f"강의실 {viz_room} 시각화 파일")
+        else:
+            # PNG가 없을 때만 앱 내 그리드로 대체
+            render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
@@ -2011,17 +1989,6 @@ elif menu == "전체 시간표":
                                 "목적함수변화": float(cur_out.get("objective_delta", 0.0)),
                             }
                         )
-                    else:
-                        # 현재 배정 자체가 충돌로 판정되는 경우 원인을 바로 보여준다.
-                        st.warning(
-                            "현재 배정이 이미 제약(강의실/동시시험)과 충돌로 판정되어 "
-                            "이동 후보가 0개로 나올 수 있습니다."
-                        )
-                        st.error(f"사유: {cur_out.get('reason', '알 수 없음')}")
-                        if cur_out.get("room_conflicts"):
-                            st.write("강의실 충돌 과목(일부):", ", ".join([str(x) for x in cur_out["room_conflicts"]]))
-                        if cur_out.get("student_conflict_count") is not None:
-                            st.write("동시시험 충돌 학생 수:", int(cur_out.get("student_conflict_count", 0)))
 
                 if not feasible_rows:
                     with tab_t:
