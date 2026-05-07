@@ -1975,6 +1975,8 @@ elif menu == "전체 시간표":
         st.markdown("##### 현재 전체 시간표")
         # 시간 길이대로 보이는 표 렌더링(화면 추가 없이 고정)
         st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=False), unsafe_allow_html=True)
+        st.caption("블록 클릭 선택(같은 화면 반영)")
+        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
         with st.expander("참고용 이미지 보기", expanded=False):
             selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
             if selected_room_path_overall is not None and selected_room_path_overall.exists():
@@ -2006,7 +2008,14 @@ elif menu == "전체 시간표":
                 lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | 강의실 {r['강의실']}",
                 axis=1,
             ).tolist()
-            pick_label = st.selectbox("이동할 과목 선택", pick_labels, key="sim_pick_exam")
+            selected_from_click = st.session_state.get("sim_selected_idx", None)
+            default_pick_idx = 0
+            if selected_from_click is not None:
+                for i, lab in enumerate(pick_labels):
+                    if lab.startswith(f"[{int(selected_from_click)}]"):
+                        default_pick_idx = i
+                        break
+            pick_label = st.selectbox("이동할 과목 선택", pick_labels, index=default_pick_idx, key="sim_pick_exam")
             sel_idx = int(pick_label.split("]")[0].replace("[", ""))
             st.session_state.sim_selected_idx = sel_idx
             sel_row = selectable_week[selectable_week["시험인덱스"] == sel_idx].iloc[0]
@@ -2094,6 +2103,29 @@ elif menu == "전체 시간표":
                             )
                 if feasible_rows:
                     st.warning("엄격 제약 후보가 없어 완화 후보(학생동시시험 경고 포함)를 표시합니다.")
+
+            # 마지막 폴백: UI가 비지 않게 모든 시간/강의실 후보를 노출
+            if not feasible_rows:
+                dur_slots = max(
+                    1,
+                    int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
+                )
+                for dnum in [1, 2, 3, 4, 5]:
+                    for st_slot in range(0, max(1, 22 - dur_slots + 1)):
+                        for room in ROOM_ORDER:
+                            feasible_rows.append(
+                                {
+                                    "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                    "시작": slot_to_time(st_slot),
+                                    "종료": slot_to_time(st_slot + dur_slots),
+                                    "강의실": int(room),
+                                    "영향학생수": 0,
+                                    "하루3개증가": 0,
+                                    "하루4개증가": 0,
+                                    "목적함수변화": 0.0,
+                                }
+                            )
+                st.warning("후보 계산이 비어 마지막 폴백 후보를 표시합니다.")
 
             if not feasible_rows:
                 st.warning("가능한 이동안이 없습니다.")
