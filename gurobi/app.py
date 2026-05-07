@@ -143,7 +143,7 @@ st.markdown(
       word-break:keep-all;
     }
     .calendar-wrap table {width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px;}
-    .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:5px; vertical-align:top; height:58px;}
+    .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:5px; vertical-align:top; height:70px;}
     .calendar-wrap th {background:#dbe7f9; text-align:center; font-size:14px; color:var(--text-main);}
     .calendar-wrap .time-col {background:#f3f7fc; width:90px; text-align:center; font-weight:700; color:var(--text-main);}
     .calendar-wrap .exam {background:#dbeafe !important; color:#0b1220 !important; border:2px solid #7aa7df !important;}
@@ -151,18 +151,25 @@ st.markdown(
     .calendar-wrap .empty {background:#ffffff;}
     .calendar-wrap .exam-block {
       display:block;
-      min-height:46px;
+      min-height:58px;
       background:#bfdbfe;
       border:1px solid #60a5fa;
       border-radius:7px;
       padding:5px 6px;
       line-height:1.22;
+      white-space:normal;
+      word-break:keep-all;
+      overflow-wrap:anywhere;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
       color:#0b1220 !important;
       display:block;
+    }
+    .calendar-wrap .exam-link:hover .exam-block {
+      background:#93c5fd;
+      border-color:#2563eb;
     }
     .calendar-wrap .grade-pill {
       display:inline-block;
@@ -748,6 +755,81 @@ def score_move_impact(
         "objective_before": base_obj,
         "objective_after": new_obj,
         "objective_delta": new_obj - base_obj,
+    }
+
+
+def score_move_impact_relaxed(
+    exam_df: pd.DataFrame,
+    target_idx: int,
+    new_week: int,
+    new_day: int,
+    new_start: int,
+    new_room: int,
+    student_sets: dict[int, set[int]],
+    summary: dict,
+) -> dict:
+    """완화 평가: 강의실 중복만 막고(학생 동시시험은 경고치로만 계산) 후보를 보여준다."""
+    base = exam_df.copy()
+    trow = base[base["시험인덱스"] == target_idx]
+    if trow.empty:
+        return {"feasible": False, "reason": "대상 과목을 찾지 못했습니다."}
+    trow = trow.iloc[0]
+    dur_slots = float(trow["표시종료슬롯"]) - float(trow["시작슬롯"])
+    new_end = float(new_start) + dur_slots
+    if float(new_start) < 0 or float(new_end) > 22:
+        return {"feasible": False, "reason": "시간 범위를 벗어납니다."}
+
+    others = base[base["시험인덱스"] != target_idx]
+    for _, r in others.iterrows():
+        if int(r["주차"]) != int(new_week) or int(r["요일번호"]) != int(new_day):
+            continue
+        if int(new_room) not in set(int(x) for x in r["강의실목록"]):
+            continue
+        if intervals_overlap(float(new_start), float(new_end), float(r["시작슬롯"]), float(r["표시종료슬롯"])):
+            return {"feasible": False, "reason": "강의실 중복"}
+
+    # 학생 동시시험은 제약으로 막지 않고 경고치로만 계산
+    target_students = student_sets.get(int(target_idx), set())
+    student_conflict_count = 0
+    for s_idx in target_students:
+        has_overlap = False
+        for _, r in others.iterrows():
+            eidx = int(r["시험인덱스"])
+            if s_idx not in student_sets.get(eidx, set()):
+                continue
+            if int(r["주차"]) != int(new_week) or int(r["요일번호"]) != int(new_day):
+                continue
+            if intervals_overlap(float(new_start), float(new_end), float(r["시작슬롯"]), float(r["표시종료슬롯"])):
+                has_overlap = True
+                break
+        if has_overlap:
+            student_conflict_count += 1
+
+    strict = score_move_impact(
+        exam_df=exam_df,
+        target_idx=target_idx,
+        new_week=new_week,
+        new_day=new_day,
+        new_start=new_start,
+        new_room=new_room,
+        student_sets=student_sets,
+        summary=summary,
+    )
+    if strict.get("feasible", False):
+        return strict
+
+    return {
+        "feasible": True,
+        "relaxed": True,
+        "affected_students": len(target_students),
+        "daily3_increase": 0,
+        "daily4_increase": 0,
+        "room_change_delta": 0,
+        "time_move_delta": 0,
+        "objective_before": float(summary.get("objective", 0.0)),
+        "objective_after": float(summary.get("objective", 0.0)),
+        "objective_delta": 0.0,
+        "student_conflict_count": int(student_conflict_count),
     }
 
 
@@ -1809,6 +1891,12 @@ if menu == "학번별 조회":
 
 elif menu == "전체 시간표":
     st.subheader("전체 시간표")
+    qpick = st.query_params.get("pick", None)
+    if qpick is not None:
+        try:
+            st.session_state.sim_selected_idx = int(qpick)
+        except Exception:
+            pass
 
     if "manual_moves" not in st.session_state:
         st.session_state.manual_moves = {}
@@ -1888,14 +1976,14 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 학번별 검색의 "시각화 파일"과 동일한 강의실 PNG를 우선 사용한다.
-        selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
-        if selected_room_path_overall is not None and selected_room_path_overall.exists():
-            st.image(str(selected_room_path_overall), use_container_width=True)
-            st.caption(f"강의실 {viz_room} 시각화 파일")
-        else:
-            # PNG가 없을 때만 앱 내 그리드로 대체
-            render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
+        # 항상 클릭 가능한 캘린더를 먼저 보여준다.
+        # (블록 클릭 -> 오른쪽 이동 설정으로 연결)
+        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
+        with st.expander("참고용 이미지 보기", expanded=False):
+            selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
+            if selected_room_path_overall is not None and selected_room_path_overall.exists():
+                st.image(str(selected_room_path_overall), use_container_width=True)
+                st.caption(f"강의실 {viz_room} 시각화 파일")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
@@ -1989,6 +2077,38 @@ elif menu == "전체 시간표":
                                 "목적함수변화": float(cur_out.get("objective_delta", 0.0)),
                             }
                         )
+                # 엄격 제약 후보가 없으면, 완화 후보(강의실 중복만 체크)라도 보여서 이동 선택 UI가 비지 않게 한다.
+                if not feasible_rows:
+                    for room in ROOM_ORDER:
+                        for dnum in [1, 2, 3, 4, 5]:
+                            for st_slot in range(0, 19):
+                                out_relaxed = score_move_impact_relaxed(
+                                    exam_df=exam_df_view,
+                                    target_idx=sel_idx,
+                                    new_week=int(sim_week_num),
+                                    new_day=int(dnum),
+                                    new_start=int(st_slot),
+                                    new_room=int(room),
+                                    student_sets=student_sets,
+                                    summary=summary,
+                                )
+                                if not out_relaxed.get("feasible", False):
+                                    continue
+                                end_slot = min(22, st_slot + max(1, int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999)))
+                                feasible_rows.append(
+                                    {
+                                        "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                        "시작": slot_to_time(st_slot),
+                                        "종료": slot_to_time(end_slot),
+                                        "강의실": int(room),
+                                        "영향학생수": int(out_relaxed.get("affected_students", 0)),
+                                        "하루3개증가": int(out_relaxed.get("daily3_increase", 0)),
+                                        "하루4개증가": int(out_relaxed.get("daily4_increase", 0)),
+                                        "목적함수변화": float(out_relaxed.get("objective_delta", 0.0)),
+                                    }
+                                )
+                    if feasible_rows:
+                        st.warning("엄격 제약 후보가 없어 완화 후보(학생동시시험 경고 포함)를 표시합니다.")
 
                 if not feasible_rows:
                     with tab_t:
