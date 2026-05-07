@@ -193,10 +193,10 @@ st.markdown(
       text-align:center;
     }
     .calendar-wrap .cont {
-      min-height:0;
-      background:transparent;
-      border:none;
-      display:none;
+      min-height:58px;
+      background:#bfdbfe;
+      border:1px solid #60a5fa;
+      border-radius:7px;
     }
     .click-grid-head {
       display:grid;
@@ -1167,6 +1167,8 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
             tlabel = slot_to_time(s)
             if s == s0:
                 table[tlabel][day] = text_main
+            else:
+                table[tlabel][day] = "<div class='cont'></div>"
 
     html_rows = []
     for t in time_rows:
@@ -1892,12 +1894,6 @@ if menu == "학번별 조회":
 
 elif menu == "전체 시간표":
     st.subheader("전체 시간표")
-    qpick = st.query_params.get("pick", None)
-    if qpick is not None:
-        try:
-            st.session_state.sim_selected_idx = int(qpick)
-        except Exception:
-            pass
 
     if "manual_moves" not in st.session_state:
         st.session_state.manual_moves = {}
@@ -1977,9 +1973,8 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 항상 클릭 가능한 캘린더를 먼저 보여준다.
-        # (블록 클릭 -> 오른쪽 이동 설정으로 연결)
-        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=True), unsafe_allow_html=True)
+        # 같은 화면에서 클릭 선택(화면 전환 없이 오른쪽 패널 반영)
+        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
         with st.expander("참고용 이미지 보기", expanded=False):
             selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
             if selected_room_path_overall is not None and selected_room_path_overall.exists():
