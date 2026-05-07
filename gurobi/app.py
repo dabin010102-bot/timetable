@@ -188,7 +188,7 @@ st.markdown(
     }
     .click-grid-head {
       display:grid;
-      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
+      grid-template-columns: 70px repeat(5, minmax(70px, 1fr));
       border-top:1px solid #cfd8e3;
       border-left:1px solid #cfd8e3;
       background:#dbe7f9;
@@ -197,7 +197,7 @@ st.markdown(
     }
     .click-grid-row {
       display:grid;
-      grid-template-columns: 84px repeat(5, minmax(110px, 1fr));
+      grid-template-columns: 70px repeat(5, minmax(70px, 1fr));
       border-left:1px solid #cfd8e3;
     }
     .click-grid-cell, .click-grid-time {
@@ -268,6 +268,10 @@ st.markdown(
       background:#bfdbfe !important;
       border-color:#2563eb !important;
       color:#0b1220 !important;
+    }
+    .click-grid-wrap{
+      overflow-x:auto;
+      padding-bottom:6px;
     }
     .result-table-wrap {overflow-x:auto; margin-top:10px;}
     .result-table {width:100%; border-collapse:collapse; font-size:14px; background:#ffffff;}
@@ -1135,9 +1139,13 @@ def build_feasible_area_html(
     feasible_rows: list[dict] = []
     cell_delta: dict[tuple[str, str], float] = {}
     day_labels = ["월", "화", "수", "목", "금"]
+    # 표시종료슬롯은 2.5처럼 소수 슬롯일 수 있어, 후보 영역 표시에서는 올림해서 블록이 끊기지 않게 한다.
     duration_slots = int(
-        float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
-        - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
+        (
+            float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
+            - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
+        )
+        + 0.999999
     )
     for d in day_labels:
         dnum = DAY_KO_TO_NUM[d]
@@ -1421,11 +1429,13 @@ def render_clickable_calendar(
         if day not in DAY_ORDER:
             continue
         s0 = int(r.get("시작슬롯", 0))
-        s1 = int(r.get("종료슬롯", s0))
+        # 표시종료슬롯이 2.5 같은 소수 슬롯일 수 있어서, 클릭 그리드에서는 올림해서 연속칸을 맞춘다.
+        s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
         starts[(day, slot_to_time(s0))] = r
         for s in range(s0 + 1, s1):
             cont.add((day, slot_to_time(s)))
 
+    st.markdown("<div class='click-grid-wrap'>", unsafe_allow_html=True)
     st.markdown(
         "<div class='click-grid-head'><div class='click-grid-cell'>시간</div>"
         + "".join(f"<div class='click-grid-cell'>{d}</div>" for d in DAY_ORDER)
@@ -1455,12 +1465,17 @@ def render_clickable_calendar(
                 selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
                 label = f"{selected_mark}{r['과목명']}\n{r['강의실']}\n{r['시작']}~{r['종료']}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
-                    st.session_state.sim_selected_idx = exam_idx
+                    # 같은 블록을 다시 누르면 선택 해제
+                    if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx:
+                        st.session_state.sim_selected_idx = None
+                    else:
+                        st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
             elif key in cont:
                 cols[idx].markdown("<div class='click-grid-cont'></div>", unsafe_allow_html=True)
             else:
                 cols[idx].markdown("<div class='click-grid-cell'></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_room_calendar_fallback(exam_df_src: pd.DataFrame, room_no: int, key_prefix: str):
