@@ -161,11 +161,11 @@ st.markdown(
       word-break:keep-all;
       overflow-wrap:anywhere;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
-      display:flex;
+      display:flex !important;
       flex-direction:column;
-      justify-content:center;
-      align-items:center;
-      text-align:center;
+      justify-content:center !important;
+      align-items:center !important;
+      text-align:center !important;
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
@@ -1987,12 +1987,8 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        tab_t, tab_r = st.tabs(["시간이동", "강의실이동"])
         if visible_week.empty:
-            with tab_t:
-                st.info("이 조건에서 표시할 시험이 없습니다.")
-            with tab_r:
-                st.info("이 조건에서 표시할 시험이 없습니다.")
+            st.info("이 조건에서 표시할 시험이 없습니다.")
         else:
             pick_labels = visible_week.apply(
                 lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | 강의실 {r['강의실']}",
@@ -2088,66 +2084,52 @@ elif menu == "전체 시간표":
                     st.warning("엄격 제약 후보가 없어 완화 후보(학생동시시험 경고 포함)를 표시합니다.")
 
             if not feasible_rows:
-                with tab_t:
-                    st.warning("가능한 이동안이 없습니다.")
-                with tab_r:
-                    st.warning("가능한 이동안이 없습니다.")
+                st.warning("가능한 이동안이 없습니다.")
             else:
                 time_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in feasible_rows})
                 room_opts = sorted({str(int(r["강의실"])) for r in feasible_rows}, key=lambda x: int(x))
-                cand = None
-                with tab_t:
-                    tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
-                    time_filtered = [r for r in feasible_rows if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel]
-                    room_filtered_opts = sorted({str(int(r["강의실"])) for r in time_filtered}, key=lambda x: int(x))
-                    rsel = st.selectbox("가능한 강의실", room_filtered_opts, key="sim_room_filter_by_time")
-                    cands = [r for r in time_filtered if str(int(r["강의실"])) == rsel]
-                    if cands:
-                        cand = cands[0]
-                with tab_r:
-                    rsel2 = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter")
-                    room_filtered = [r for r in feasible_rows if str(int(r["강의실"])) == rsel2]
-                    time_filtered_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in room_filtered})
-                    tsel2 = st.selectbox("가능한 시간", time_filtered_opts, key="sim_time_filter_by_room")
-                    cands2 = [r for r in room_filtered if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel2]
-                    if cands2:
-                        cand = cands2[0]
+                tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                time_filtered = [r for r in feasible_rows if f"{r['요일']} {r['시작']}~{r['종료']}" == tsel]
+                room_filtered_opts = sorted({str(int(r["강의실"])) for r in time_filtered}, key=lambda x: int(x))
+                rsel = st.selectbox("가능한 강의실", room_filtered_opts, key="sim_room_filter_by_time")
+                cands = [r for r in time_filtered if str(int(r["강의실"])) == rsel]
+                cand = cands[0] if cands else None
 
-                    if cand is None:
-                        st.warning("선택한 조건의 이동안이 없습니다.")
-                    else:
-                        st.caption(f"선택 이동안: {cand['요일']} {cand['시작']}~{cand['종료']} / {cand['강의실']}호")
-                        sim_day_no = DAY_KO_TO_NUM[str(cand["요일"])]
-                        sim_start_slot = int((int(str(cand["시작"]).split(":")[0]) * 60 + int(str(cand["시작"]).split(":")[1]) - 540) / 30)
-                        sim_room = int(cand["강의실"])
+                if cand is None:
+                    st.warning("선택한 조건의 이동안이 없습니다.")
+                else:
+                    st.caption(f"선택 이동안: {cand['요일']} {cand['시작']}~{cand['종료']} / {cand['강의실']}호")
+                    sim_day_no = DAY_KO_TO_NUM[str(cand["요일"])]
+                    sim_start_slot = int((int(str(cand["시작"]).split(":")[0]) * 60 + int(str(cand["시작"]).split(":")[1]) - 540) / 30)
+                    sim_room = int(cand["강의실"])
 
-                        out = score_move_impact(
-                            exam_df=exam_df_view,
-                            target_idx=sel_idx,
-                            new_week=int(sim_week_num),
-                            new_day=int(sim_day_no),
-                            new_start=int(sim_start_slot),
-                            new_room=int(sim_room),
-                            student_sets=student_sets,
-                            summary=summary,
-                        )
-                        st.markdown("#### 영향 요약")
-                        st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
-                        st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
-                        st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
-                        st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
+                    out = score_move_impact(
+                        exam_df=exam_df_view,
+                        target_idx=sel_idx,
+                        new_week=int(sim_week_num),
+                        new_day=int(sim_day_no),
+                        new_start=int(sim_start_slot),
+                        new_room=int(sim_room),
+                        student_sets=student_sets,
+                        summary=summary,
+                    )
+                    st.markdown("#### 영향 요약")
+                    st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
+                    st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
+                    st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
+                    st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
 
-                        if st.button("시간표 변경 저장", key="save_move_btn"):
-                            prev_state = st.session_state.manual_moves.get(str(sel_idx))
-                            st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
-                            st.session_state.manual_moves[str(sel_idx)] = {
-                                "week": int(sim_week_num),
-                                "day": int(sim_day_no),
-                                "start_slot": int(sim_start_slot),
-                                "room": int(sim_room),
-                            }
-                            st.success("변경 저장 완료")
-                            st.rerun()
+                    if st.button("시간표 변경 저장", key="save_move_btn"):
+                        prev_state = st.session_state.manual_moves.get(str(sel_idx))
+                        st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
+                        st.session_state.manual_moves[str(sel_idx)] = {
+                            "week": int(sim_week_num),
+                            "day": int(sim_day_no),
+                            "start_slot": int(sim_start_slot),
+                            "room": int(sim_room),
+                        }
+                        st.success("변경 저장 완료")
+                        st.rerun()
         if st.session_state.manual_moves:
             rows = []
             for k, mv in st.session_state.manual_moves.items():
