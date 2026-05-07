@@ -146,8 +146,8 @@ st.markdown(
     .calendar-wrap th, .calendar-wrap td {border:1px solid #cfd8e3; padding:5px; vertical-align:top; height:70px;}
     .calendar-wrap th {background:#dbe7f9; text-align:center; font-size:14px; color:var(--text-main);}
     .calendar-wrap .time-col {background:#f3f7fc; width:90px; text-align:center; font-weight:700; color:var(--text-main);}
-    .calendar-wrap .exam {background:#dbeafe !important; color:#0b1220 !important; border:2px solid #7aa7df !important;}
-    .calendar-wrap .course {font-weight:900; margin-bottom:3px; font-size:13px; color:#0b1220 !important;}
+    .calendar-wrap .exam {background:#dbeafe !important; color:#0b1220 !important; border:2px solid #7aa7df !important; text-align:center;}
+    .calendar-wrap .course {font-weight:900; margin-bottom:3px; font-size:13px; color:#0b1220 !important; text-align:center;}
     .calendar-wrap .empty {background:#ffffff;}
     .calendar-wrap .exam-block {
       display:block;
@@ -161,6 +161,11 @@ st.markdown(
       word-break:keep-all;
       overflow-wrap:anywhere;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      text-align:center;
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
@@ -185,13 +190,13 @@ st.markdown(
       color:#1e3a8a !important;
       font-weight:800;
       font-size:12px;
+      text-align:center;
     }
     .calendar-wrap .cont {
-      min-height:46px;
-      background:#bfdbfe;
-      border-left:1px solid #60a5fa;
-      border-right:1px solid #60a5fa;
-      border-radius:5px;
+      min-height:0;
+      background:transparent;
+      border:none;
+      display:none;
     }
     .click-grid-head {
       display:grid;
@@ -1162,8 +1167,6 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
             tlabel = slot_to_time(s)
             if s == s0:
                 table[tlabel][day] = text_main
-            else:
-                table[tlabel][day] = "<div class='cont'></div>"
 
     html_rows = []
     for t in time_rows:
@@ -1209,8 +1212,6 @@ def build_feasible_area_html(
             tlabel = slot_to_time(s)
             if s == s0:
                 table[tlabel][day] = f"<div class='course'>{show_course}</div><div>{grade_txt}학년</div>"
-            else:
-                table[tlabel][day] = "<div class='cont'></div>"
 
     # 가능 영역(초록) + 목적함수 변화 요약 텍스트
     feasible_rows: list[dict] = []
