@@ -448,7 +448,7 @@ def find_existing_dir(candidates: list[Path]) -> Path | None:
 def load_result_payload() -> tuple[dict, Path]:
     p = find_existing_path(RESULT_JSON_CANDIDATES, prefer_latest=True)
     if p is None:
-        raise FileNotFoundError("결과 JSON 파일을 찾지 못했습니다. 먼저 gurobl.py를 실행하세요.")
+        raise FileNotFoundError("결과 JSON 파일을 찾지 못했습니다. 먼저 gurobi.py를 실행하세요.")
     return json.loads(p.read_text(encoding="utf-8")), p
 
 
@@ -691,7 +691,8 @@ def score_move_impact(
     sim.loc[mask, "시작"] = slot_to_time(int(new_start))
     end_mins = int(9 * 60 + int(new_start) * 30 + int(float(trow["시험시간(분)"])))
     sim.loc[mask, "종료"] = minute_to_time(end_mins)
-    sim.loc[mask, "강의실목록"] = [[int(new_room)]]
+    # 강의실목록은 각 행이 list[int] 형태여야 한다.
+    sim.loc[mask, "강의실목록"] = [[int(new_room)] for _ in range(int(mask.sum()))]
     sim.loc[mask, "강의실"] = str(int(new_room))
 
     # 변경 건수/영향
@@ -1888,14 +1889,15 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 학번별 검색의 "시각화 파일"과 동일한 강의실 PNG를 우선 사용한다.
+        # 전체 시간표에서는 "블록 클릭"이 핵심이므로, PNG가 있더라도 클릭 가능한 그리드를 항상 보여준다.
+        # (PNG는 참고용으로 expander에 넣어둔다.)
+        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
+
         selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
         if selected_room_path_overall is not None and selected_room_path_overall.exists():
-            st.image(str(selected_room_path_overall), use_container_width=True)
-            st.caption(f"강의실 {viz_room} 시각화 파일")
-        else:
-            # PNG가 없을 때만 앱 내 그리드로 대체
-            render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
+            with st.expander(f"참고 이미지 보기 (강의실 {viz_room})", expanded=False):
+                st.image(str(selected_room_path_overall), use_container_width=True)
+                st.caption(f"강의실 {viz_room} 시각화 파일")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
