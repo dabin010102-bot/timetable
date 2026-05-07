@@ -1982,22 +1982,34 @@ elif menu == "전체 시간표":
                 st.caption(f"강의실 {viz_room} 시각화 파일")
 
     visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    selectable_week = exam_df_view[exam_df_view["주차"] == sim_week_num].copy()
+    if viz_grade != "전체":
+        selectable_week = selectable_week[
+            selectable_week["학년"].astype(str).str.replace("학년", "", regex=False).str.strip() == str(viz_grade)
+        ]
+    if viz_course != "전체":
+        selectable_week = selectable_week[selectable_week["과목명"].astype(str) == str(viz_course)]
+    selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
 
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        if visible_week.empty:
-            st.info("이 조건에서 표시할 시험이 없습니다.")
+        st.caption(
+            f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
+            f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
+        )
+        if selectable_week.empty:
+            st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
-            pick_labels = visible_week.apply(
+            pick_labels = selectable_week.apply(
                 lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | 강의실 {r['강의실']}",
                 axis=1,
             ).tolist()
             pick_label = st.selectbox("이동할 과목 선택", pick_labels, key="sim_pick_exam")
             sel_idx = int(pick_label.split("]")[0].replace("[", ""))
             st.session_state.sim_selected_idx = sel_idx
-            sel_row = visible_week[visible_week["시험인덱스"] == sel_idx].iloc[0]
+            sel_row = selectable_week[selectable_week["시험인덱스"] == sel_idx].iloc[0]
             st.markdown(
                 f"선택 과목: **{sel_row['과목명']}**  \n"
                 f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
