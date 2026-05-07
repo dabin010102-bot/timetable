@@ -634,6 +634,9 @@ def score_move_impact(
 
     dur_slots = float(trow["표시종료슬롯"]) - float(trow["시작슬롯"])
     new_end = float(new_start) + dur_slots
+    # 시간 슬롯 경계(09:00=0, 마지막 표시 슬롯은 22)
+    if float(new_start) < 0 or float(new_end) > 22:
+        return {"feasible": False, "reason": "시간 범위를 벗어납니다."}
 
     # 1) 강의실 중복 체크
     room_conflicts = []
@@ -1149,7 +1152,9 @@ def build_feasible_area_html(
     )
     for d in day_labels:
         dnum = DAY_KO_TO_NUM[d]
-        for st_slot in range(0, 19):
+        # 종료가 22를 넘지 않도록 시작 슬롯 범위를 제한
+        max_start = max(0, 22 - int(duration_slots))
+        for st_slot in range(0, max_start + 1):
             out = score_move_impact(
                 exam_df=exam_df,
                 target_idx=int(target_idx),
@@ -2006,6 +2011,17 @@ elif menu == "전체 시간표":
                                 "목적함수변화": float(cur_out.get("objective_delta", 0.0)),
                             }
                         )
+                    else:
+                        # 현재 배정 자체가 충돌로 판정되는 경우 원인을 바로 보여준다.
+                        st.warning(
+                            "현재 배정이 이미 제약(강의실/동시시험)과 충돌로 판정되어 "
+                            "이동 후보가 0개로 나올 수 있습니다."
+                        )
+                        st.error(f"사유: {cur_out.get('reason', '알 수 없음')}")
+                        if cur_out.get("room_conflicts"):
+                            st.write("강의실 충돌 과목(일부):", ", ".join([str(x) for x in cur_out["room_conflicts"]]))
+                        if cur_out.get("student_conflict_count") is not None:
+                            st.write("동시시험 충돌 학생 수:", int(cur_out.get("student_conflict_count", 0)))
 
                 if not feasible_rows:
                     with tab_t:
