@@ -1638,7 +1638,9 @@ def make_student_calendar_png(df_student: pd.DataFrame, sid: str) -> bytes | Non
     fig_h = max(4, min(18, 1.0 + 0.35 * len(data)))
     fig, ax = plt.subplots(figsize=(14, fig_h))
     ax.axis("off")
-    ax.set_title(f"학번 {sid} 시험 캘린더 요약", fontsize=14, pad=10)
+    weeks_present = sorted({int(x) for x in df["주차"].unique().tolist()})
+    week_label = "/".join([f"{w}주차" for w in weeks_present]) if weeks_present else "주차 없음"
+    ax.set_title(f"학번 {sid} 시험 캘린더 요약 ({week_label})", fontsize=14, pad=10)
     tbl = ax.table(cellText=data.values, colLabels=data.columns, loc="center", cellLoc="center")
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(9)
@@ -1825,39 +1827,15 @@ if menu == "학번별 조회":
                 unsafe_allow_html=True,
             )
 
-            # 캘린더 다운로드(항상 노출)
-            calendar_blocks = []
-            for w in [7, 8, 9]:
-                calendar_blocks.append(f"<h2>{w}주차</h2>")
-                calendar_blocks.append(build_calendar_html(df_student, w))
-
-            calendar_doc = (
-                "<!doctype html><html lang='ko'><head><meta charset='utf-8'>"
-                "<title>학생 시험 캘린더</title></head><body>"
-                f"<h1>학번 {sid} 시험 캘린더</h1>"
-                + "".join(calendar_blocks)
-                + "</body></html>"
-            )
-            st.download_button(
-                "캘린더 다운로드(HTML)",
-                data=calendar_doc.encode("utf-8"),
-                file_name=f"student_{sid}_calendar.html",
-                mime="text/html",
-            )
+            # 캘린더 다운로드는 PNG 1개(존재 주차만 포함)만 제공
             png_bytes = make_student_calendar_png(df_student, sid)
             if png_bytes is not None:
                 st.download_button(
-                    "캘린더 이미지 저장(PNG)",
+                    "캘린더 이미지 저장(PNG, 전체 주차)",
                     data=png_bytes,
                     file_name=f"student_{sid}_calendar.png",
                     mime="image/png",
                 )
-            st.download_button(
-                "휴대폰/Google 캘린더에 저장(ICS)",
-                data=make_student_calendar_ics(df_student, sid),
-                file_name=f"student_{sid}_exam_calendar.ics",
-                mime="text/calendar",
-            )
 
             st.markdown("#### 시각화 파일")
             room_choice_student = st.selectbox(
@@ -2126,27 +2104,27 @@ elif menu == "전체 시간표":
                 student_sets=student_sets,
                 summary=summary,
             )
+            st.caption(f"선택 이동안: {tday} {tstart} / {sim_room}호")
             if not out.get("feasible", False):
                 st.warning(f"선택 조합은 엄격 제약에서 불가: {out.get('reason', '사유 없음')}")
             else:
-                st.caption(f"선택 이동안: {tday} {tstart} / {sim_room}호")
                 st.markdown("#### 영향 요약")
                 st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
                 st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
                 st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
                 st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
 
-                if st.button("시간표 변경 저장", key="save_move_btn"):
-                    prev_state = st.session_state.manual_moves.get(str(sel_idx))
-                    st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
-                    st.session_state.manual_moves[str(sel_idx)] = {
-                        "week": int(sim_week_num),
-                        "day": int(sim_day_no),
-                        "start_slot": int(sim_start_slot),
-                        "room": int(sim_room),
-                    }
-                    st.success("변경 저장 완료")
-                    st.rerun()
+            if st.button("이동 반영", key="apply_move_btn", disabled=not out.get("feasible", False)):
+                prev_state = st.session_state.manual_moves.get(str(sel_idx))
+                st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
+                st.session_state.manual_moves[str(sel_idx)] = {
+                    "week": int(sim_week_num),
+                    "day": int(sim_day_no),
+                    "start_slot": int(sim_start_slot),
+                    "room": int(sim_room),
+                }
+                st.success("이동 반영 완료")
+                st.rerun()
         if st.session_state.manual_moves:
             rows = []
             for k, mv in st.session_state.manual_moves.items():
