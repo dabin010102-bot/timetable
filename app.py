@@ -1973,9 +1973,7 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 시간 길이대로 보이는 표 렌더링(화면 추가 없이 고정)
-        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=False), unsafe_allow_html=True)
-        st.caption("블록 클릭 선택(같은 화면 반영)")
+        # 시간표는 한 개만 보여준다(클릭 선택 포함)
         render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
         with st.expander("참고용 이미지 보기", expanded=False):
             selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
@@ -2024,108 +2022,68 @@ elif menu == "전체 시간표":
                 f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
             )
 
-            all_rows = []
-            for room in ROOM_ORDER:
-                _h, rows = build_feasible_area_html(
-                    exam_df=exam_df_view,
-                    target_idx=sel_idx,
-                    target_week=int(sim_week_num),
-                    target_room=int(room),
-                    student_sets=student_sets,
-                    summary=summary,
-                )
-                all_rows.extend(rows)
-            uniq = {}
-            for r in all_rows:
-                key = (str(r["요일"]), str(r["시작"]), str(r["종료"]), int(r["강의실"]))
-                uniq[key] = r
-            feasible_rows = list(uniq.values())
-            st.caption(f"가능 후보 수: {len(feasible_rows)}")
+            # 이동 후보는 UI가 절대 비지 않도록 "전체 후보 생성 -> 엄격 필터" 순서로 만든다.
+            dur_slots = max(
+                1,
+                int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
+            )
+            raw_rows = []
+            for dnum in [1, 2, 3, 4, 5]:
+                for st_slot in range(0, max(1, 22 - dur_slots + 1)):
+                    for room in ROOM_ORDER:
+                        raw_rows.append(
+                            {
+                                "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                "시작": slot_to_time(st_slot),
+                                "종료": slot_to_time(st_slot + dur_slots),
+                                "강의실": int(room),
+                                "dnum": int(dnum),
+                                "slot": int(st_slot),
+                            }
+                        )
 
-                # 후보가 비어도 현재 배정안은 최소 1개 후보로 노출해 이동 UI가 비지 않게 한다.
-            if not feasible_rows:
-                cur_day_no = int(sel_row["요일번호"])
-                cur_start_slot = int(sel_row["시작슬롯"])
-                cur_room = int(str(sel_row["강의실"]).split()[0])
-                cur_out = score_move_impact(
+            feasible_rows = []
+            for rr in raw_rows:
+                out_strict = score_move_impact(
                     exam_df=exam_df_view,
                     target_idx=sel_idx,
                     new_week=int(sim_week_num),
-                    new_day=int(cur_day_no),
-                    new_start=int(cur_start_slot),
-                    new_room=int(cur_room),
+                    new_day=int(rr["dnum"]),
+                    new_start=int(rr["slot"]),
+                    new_room=int(rr["강의실"]),
                     student_sets=student_sets,
                     summary=summary,
                 )
-                if cur_out.get("feasible", False):
-                    dur_slots = int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]))
+                if out_strict.get("feasible", False):
                     feasible_rows.append(
                         {
-                            "요일": str(sel_row["요일"]),
-                            "시작": str(sel_row["시작"]),
-                            "종료": slot_to_time(int(cur_start_slot + dur_slots)),
-                            "강의실": int(cur_room),
-                            "영향학생수": int(cur_out.get("affected_students", 0)),
-                            "하루3개증가": int(cur_out.get("daily3_increase", 0)),
-                            "하루4개증가": int(cur_out.get("daily4_increase", 0)),
-                            "목적함수변화": float(cur_out.get("objective_delta", 0.0)),
+                            "요일": rr["요일"],
+                            "시작": rr["시작"],
+                            "종료": rr["종료"],
+                            "강의실": rr["강의실"],
+                            "영향학생수": int(out_strict.get("affected_students", 0)),
+                            "하루3개증가": int(out_strict.get("daily3_increase", 0)),
+                            "하루4개증가": int(out_strict.get("daily4_increase", 0)),
+                            "목적함수변화": float(out_strict.get("objective_delta", 0.0)),
                         }
                     )
-                # 엄격 제약 후보가 없으면, 완화 후보(강의실 중복만 체크)라도 보여서 이동 선택 UI가 비지 않게 한다.
+            st.caption(f"가능 후보 수: {len(feasible_rows)}")
             if not feasible_rows:
-                for room in ROOM_ORDER:
-                    for dnum in [1, 2, 3, 4, 5]:
-                        for st_slot in range(0, 19):
-                            out_relaxed = score_move_impact_relaxed(
-                                exam_df=exam_df_view,
-                                target_idx=sel_idx,
-                                new_week=int(sim_week_num),
-                                new_day=int(dnum),
-                                new_start=int(st_slot),
-                                new_room=int(room),
-                                student_sets=student_sets,
-                                summary=summary,
-                            )
-                            if not out_relaxed.get("feasible", False):
-                                continue
-                            end_slot = min(22, st_slot + max(1, int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999)))
-                            feasible_rows.append(
-                                {
-                                    "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                    "시작": slot_to_time(st_slot),
-                                    "종료": slot_to_time(end_slot),
-                                    "강의실": int(room),
-                                    "영향학생수": int(out_relaxed.get("affected_students", 0)),
-                                    "하루3개증가": int(out_relaxed.get("daily3_increase", 0)),
-                                    "하루4개증가": int(out_relaxed.get("daily4_increase", 0)),
-                                    "목적함수변화": float(out_relaxed.get("objective_delta", 0.0)),
-                                }
-                            )
-                if feasible_rows:
-                    st.warning("엄격 제약 후보가 없어 완화 후보(학생동시시험 경고 포함)를 표시합니다.")
-
-            # 마지막 폴백: UI가 비지 않게 모든 시간/강의실 후보를 노출
-            if not feasible_rows:
-                dur_slots = max(
-                    1,
-                    int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
-                )
-                for dnum in [1, 2, 3, 4, 5]:
-                    for st_slot in range(0, max(1, 22 - dur_slots + 1)):
-                        for room in ROOM_ORDER:
-                            feasible_rows.append(
-                                {
-                                    "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                    "시작": slot_to_time(st_slot),
-                                    "종료": slot_to_time(st_slot + dur_slots),
-                                    "강의실": int(room),
-                                    "영향학생수": 0,
-                                    "하루3개증가": 0,
-                                    "하루4개증가": 0,
-                                    "목적함수변화": 0.0,
-                                }
-                            )
-                st.warning("후보 계산이 비어 마지막 폴백 후보를 표시합니다.")
+                # 엄격 후보가 없으면 전체 후보를 완화 후보로 제공(이동 UI 강제 노출)
+                for rr in raw_rows:
+                    feasible_rows.append(
+                        {
+                            "요일": rr["요일"],
+                            "시작": rr["시작"],
+                            "종료": rr["종료"],
+                            "강의실": rr["강의실"],
+                            "영향학생수": 0,
+                            "하루3개증가": 0,
+                            "하루4개증가": 0,
+                            "목적함수변화": 0.0,
+                        }
+                    )
+                st.warning("엄격 후보가 없어 완화 후보(전체)를 표시합니다.")
 
             if not feasible_rows:
                 st.warning("가능한 이동안이 없습니다.")
