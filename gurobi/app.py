@@ -1134,49 +1134,49 @@ def add_change_columns_student(
 
 
 def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: bool = False) -> str:
-    time_rows = [slot_to_time(s) for s in range(0, 22)]
-    table = {t: {d: "" for d in DAY_ORDER} for t in time_rows}
+    # rowspan 기반으로 한 블록(시간 길이만큼 1개 셀)로 렌더링한다.
+    slots = list(range(0, 22))
     df_w = df_student[df_student["주차"] == target_week].copy()
 
+    starts: dict[tuple[int, str], dict] = {}
+    covered: set[tuple[int, str]] = set()
     for _, r in df_w.iterrows():
         day = str(r.get("요일", ""))
         if day not in DAY_ORDER:
             continue
         s0 = int(r.get("시작슬롯", 0))
         s1 = int(float(r.get("표시종료슬롯", r.get("종료슬롯", s0))) + 0.999999)
-        show_course = r.get("과목명", r.get("과목", ""))
-        grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", show_course))))
-        start_txt = str(r.get("시작", ""))
-        end_txt = str(r.get("종료", ""))
-        room_txt = str(r.get("강의실", "-"))
-        dur_txt = str(r.get("시험시간(분)", ""))
-        text_main = (
-            "<div class='exam-block'>"
-            f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}</span></div>"
-            f"<div>{start_txt}~{end_txt} · {dur_txt}분</div>"
-            f"<div class='room-line'>강의실 {room_txt}</div>"
-            "</div>"
-        )
-        if clickable and "시험인덱스" in r:
-            idx_val = int(r.get("시험인덱스", -1))
-            text_main = (
-                f"<a href='?pick={idx_val}&week={target_week}' class='exam-link'>"
-                f"{text_main}</a>"
-            )
-        for s in range(s0, s1):
-            tlabel = slot_to_time(s)
-            if s == s0:
-                table[tlabel][day] = text_main
-            else:
-                table[tlabel][day] = "<div class='cont'></div>"
+        s1 = min(22, max(s0 + 1, s1))
+        starts[(s0, day)] = {"row": r, "span": s1 - s0}
+        for s in range(s0 + 1, s1):
+            covered.add((s, day))
 
     html_rows = []
-    for t in time_rows:
-        cells = [f"<td class='time-col'>{t}</td>"]
+    for s in slots:
+        cells = [f"<td class='time-col'>{slot_to_time(s)}</td>"]
         for d in DAY_ORDER:
-            val = table[t][d]
-            cls = "exam" if val else "empty"
-            cells.append(f"<td class='{cls}'>{val}</td>")
+            if (s, d) in covered:
+                continue
+            if (s, d) in starts:
+                info = starts[(s, d)]
+                r = info["row"]
+                span = int(info["span"])
+                show_course = r.get("과목명", r.get("과목", ""))
+                grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", show_course))))
+                start_txt = str(r.get("시작", ""))
+                end_txt = str(r.get("종료", ""))
+                room_txt = str(r.get("강의실", "-"))
+                dur_txt = str(r.get("시험시간(분)", ""))
+                text_main = (
+                    "<div class='exam-block'>"
+                    f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}</span></div>"
+                    f"<div>{start_txt}~{end_txt} · {dur_txt}분</div>"
+                    f"<div class='room-line'>강의실 {room_txt}</div>"
+                    "</div>"
+                )
+                cells.append(f"<td class='exam' rowspan='{span}'>{text_main}</td>")
+            else:
+                cells.append("<td class='empty'></td>")
         html_rows.append("<tr>" + "".join(cells) + "</tr>")
 
     table_html = (
@@ -1973,8 +1973,8 @@ elif menu == "전체 시간표":
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
-        # 시간표는 한 개만 보여준다(클릭 선택 포함)
-        render_clickable_calendar(calendar_src, sim_week_num, "overall_click")
+        # 시간표는 한 개만 보여준다.
+        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=False), unsafe_allow_html=True)
         with st.expander("참고용 이미지 보기", expanded=False):
             selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
             if selected_room_path_overall is not None and selected_room_path_overall.exists():
@@ -1995,6 +1995,7 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
+        st.caption("이동 후보 계산에서는 최대이동거리 제약(D_max/T_max)을 적용하지 않습니다.")
         st.caption(
             f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
             f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
@@ -2043,6 +2044,9 @@ elif menu == "전체 시간표":
                         )
 
             feasible_rows = []
+            blocked_room = 0
+            blocked_student = 0
+            blocked_other = 0
             for rr in raw_rows:
                 out_strict = score_move_impact(
                     exam_df=exam_df_view,
@@ -2067,6 +2071,14 @@ elif menu == "전체 시간표":
                             "목적함수변화": float(out_strict.get("objective_delta", 0.0)),
                         }
                     )
+                else:
+                    reason = str(out_strict.get("reason", ""))
+                    if "강의실 중복" in reason:
+                        blocked_room += 1
+                    elif "학생 동시시험" in reason:
+                        blocked_student += 1
+                    else:
+                        blocked_other += 1
             st.caption(f"가능 후보 수: {len(feasible_rows)}")
             if not feasible_rows:
                 # 엄격 후보가 없으면 전체 후보를 완화 후보로 제공(이동 UI 강제 노출)
@@ -2083,7 +2095,10 @@ elif menu == "전체 시간표":
                             "목적함수변화": 0.0,
                         }
                     )
-                st.warning("엄격 후보가 없어 완화 후보(전체)를 표시합니다.")
+                st.warning(
+                    f"엄격 후보 0개: 강의실중복 차단 {blocked_room}건, 학생동시시험 차단 {blocked_student}건, 기타 {blocked_other}건. "
+                    "완화 후보(전체)를 표시합니다."
+                )
 
             if not feasible_rows:
                 st.warning("가능한 이동안이 없습니다.")
