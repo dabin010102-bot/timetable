@@ -7,6 +7,7 @@ import re
 import io
 from itertools import combinations
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -1796,12 +1797,13 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
     def esc(text) -> str:
         return str(text or "").replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
 
-    now = datetime.now().strftime("%Y%m%dT%H%M%S")
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//INU Timetable//EN",
         "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "PRODID:-//INU Timetable//Exam Calendar//KR",
     ]
 
     for _, r in df_student.sort_values(["start_dt", "과목명"]).iterrows():
@@ -1809,23 +1811,38 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
         end = pd.to_datetime(r["end_dt"]).strftime("%Y%m%dT%H%M%S")
         course = esc(r.get("과목명", r.get("과목", "")))
         room = esc(r.get("강의실", "-"))
-        uid = f"inutimetable-{sid}-{int(r.get('시험인덱스', 0))}@inu"
+        uid = esc(f"{r.get('과목명', r.get('과목', 'exam'))}-{sid}-{start}@inutimetable")
         lines.extend(
             [
                 "BEGIN:VEVENT",
                 f"UID:{uid}",
-                f"DTSTAMP:{now}",
+                f"DTSTAMP:{now_utc}",
                 f"DTSTART:{start}",
                 f"DTEND:{end}",
                 f"SUMMARY:{course} 시험",
                 f"LOCATION:{room}",
-                "DESCRIPTION:시험시간표",
+                "DESCRIPTION:INUTimetable 시험시간표",
                 "END:VEVENT",
             ]
         )
 
     lines.append("END:VCALENDAR")
     return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
+def build_google_calendar_link(row: pd.Series) -> str:
+    title = f"{str(row.get('과목명', row.get('과목', '')))} 시험"
+    start = pd.to_datetime(row["start_dt"]).strftime("%Y%m%dT%H%M%S")
+    end = pd.to_datetime(row["end_dt"]).strftime("%Y%m%dT%H%M%S")
+    location = str(row.get("강의실", "-"))
+    details = "INUTimetable 시험시간표"
+    return (
+        "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={quote(title)}"
+        f"&dates={quote(f'{start}/{end}')}"
+        f"&location={quote(location)}"
+        f"&details={quote(details)}"
+    )
 
 
 # -------------------------------------------------
@@ -1999,11 +2016,24 @@ if menu == "학번별 조회":
                 mime="text/csv",
             )
             st.download_button(
-                "캘린더(.ics) 저장",
+                "전체 시험 일정 ICS 다운로드",
                 data=make_student_calendar_ics(df_student, sid),
                 file_name=f"student_{sid}_exam_calendar.ics",
                 mime="text/calendar",
             )
+            st.caption("iPhone에서는 ICS 파일이 미리보기로만 열릴 수 있습니다. 이 경우 왼쪽 아래 공유 버튼을 눌러 캘린더 앱 또는 Google Calendar로 열어주세요.")
+
+            st.markdown("#### Google Calendar에 추가")
+            for _, exam_row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
+                link_col, info_col = st.columns([1, 4])
+                with link_col:
+                    st.markdown(
+                        f"[Google Calendar에 추가]({build_google_calendar_link(exam_row)})"
+                    )
+                with info_col:
+                    st.markdown(
+                        f"{exam_row['과목명']} | {exam_row['요일']} {exam_row['시작']}~{exam_row['종료']} | 강의실 {exam_row['강의실']}"
+                    )
 
             # 해석 문구
             total_n = len(df_student)
