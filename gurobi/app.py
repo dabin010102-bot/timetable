@@ -631,24 +631,39 @@ def find_student_row(df_is: pd.DataFrame, sid: str) -> int | None:
     return int(hit.index[0])
 
 
+def has_section_suffix(text: str) -> bool:
+    return re.search(r"[-_]\d+$", str(text or "").strip()) is not None
+
+
 def student_exam_df(exam_df: pd.DataFrame, df_is: pd.DataFrame, row_idx: int) -> pd.DataFrame:
     is_cols = [str(c) for c in df_is.columns]
     taken_idxs = []
+    positive_cols = []
+
+    for c in is_cols:
+        try:
+            v = float(df_is.at[row_idx, c])
+            if v > 0:
+                positive_cols.append(c)
+        except Exception:
+            continue
 
     unique_courses = exam_df[["시험인덱스", "과목"]].drop_duplicates()
     for _, r in unique_courses.iterrows():
         idx = int(r["시험인덱스"])
         course = str(r["과목"])
-        cols = resolve_is_columns_for_course(is_cols, course)
-        taken = False
-        for c in cols:
-            try:
-                v = float(df_is.at[row_idx, c])
-                if v > 0:
-                    taken = True
-                    break
-            except Exception:
-                continue
+        exact_course = normalize_exact(course)
+        base_course = normalize_name(course)
+
+        if has_section_suffix(course):
+            # 분반번호가 있는 과목은 학생이 실제 1로 가진 정확한 분반 컬럼만 인정한다.
+            taken = any(normalize_exact(c) == exact_course for c in positive_cols)
+        else:
+            # 단일 과목만 base_key 기준으로 허용한다.
+            taken = any(
+                normalize_name(c) == base_course and not has_section_suffix(c)
+                for c in positive_cols
+            )
         if taken:
             taken_idxs.append(idx)
 
