@@ -696,7 +696,7 @@ def apply_manual_moves(df_src: pd.DataFrame, manual_moves: dict) -> pd.DataFrame
             continue
         dur_min = int(out.loc[mask, "시험시간(분)"].iloc[0])
         dur_slots = max(1, int((dur_min + 29) // 30))
-        move_rooms = normalize_room_choice(mv["room"])
+        move_rooms = normalize_room_choice(mv.get("room", mv.get("강의실", [])))
         move_room_text = format_room_choice(move_rooms)
 
         out.loc[mask, "주차"] = int(mv["week"])
@@ -1097,7 +1097,7 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
         cur_start = int(r["시작슬롯"])
-        cur_rooms = set(r["강의실목록"])
+        cur_rooms = set(normalize_room_choice(r.get("강의실목록", r.get("강의실", []))))
 
         slots = meta.get("slots", set())
         weekslots = meta.get("weekslots", set())
@@ -1179,7 +1179,7 @@ def add_change_columns_student(
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
         cur_start = int(r["시작슬롯"])
-        cur_rooms = set(r["강의실목록"])
+        cur_rooms = set(normalize_room_choice(r.get("강의실목록", r.get("강의실", []))))
 
         # 1) 학생이 실제 수강한 분반 컬럼 찾기(IS 기준)
         match_cols = resolve_is_columns_for_course(is_cols, course)
@@ -2400,7 +2400,7 @@ elif menu == "전체 시간표":
                         "주차": int(mv["week"]),
                         "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
                         "시작": slot_to_time(int(mv["start_slot"])),
-                        "강의실": int(mv["room"]),
+                        "강의실": format_room_choice(mv.get("room", mv.get("강의실", []))),
                     }
                 )
             sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
@@ -2426,7 +2426,7 @@ elif menu == "전체 시간표":
                 "week": int(chosen_row["week"]),
                 "day": int(sim_day_no),
                 "start_slot": int(sim_start_slot),
-                "room": int(sim_room_choice[0]),
+                "room": normalize_room_choice(sim_room_choice),
             }
             st.rerun()
     with button_row[1]:
