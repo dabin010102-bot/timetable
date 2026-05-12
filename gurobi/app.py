@@ -1597,17 +1597,17 @@ def fill_missing_grade(df: pd.DataFrame, grade_map: dict[str, str]) -> pd.DataFr
         out["학년"] = "-"
     filled = []
     for _, row in out.iterrows():
-        val = str(row.get("학년", "")).strip()
-        norm_val = normalize_grade_value(val)
-        if norm_val != "-":
-            filled.append(norm_val)
-            continue
         key = str(row.get("정규과목", "")).strip()
         if not key:
             key = normalize_name(row.get("과목", ""))
         grade_val = grade_map.get(key, "-")
         if normalize_grade_value(grade_val) == "-":
-            grade_val = fallback_grade_for_course(row.get("과목", row.get("과목명", "")))
+            val = str(row.get("학년", "")).strip()
+            norm_val = normalize_grade_value(val)
+            if norm_val != "-":
+                grade_val = norm_val
+            else:
+                grade_val = fallback_grade_for_course(row.get("과목", row.get("과목명", "")))
         filled.append(normalize_grade_value(grade_val))
     out["학년"] = filled
     return out
