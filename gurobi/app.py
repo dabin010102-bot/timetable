@@ -2078,6 +2078,21 @@ elif menu == "전체 시간표":
     exam_df_view = display_exam_df.copy()
     exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
 
+    selected_course_for_focus = str(st.session_state.get("overall_viz_course", "전체"))
+    if selected_course_for_focus != "전체":
+        focus_df_pre = exam_df_view[exam_df_view["과목명"].astype(str) == selected_course_for_focus].copy()
+        if not focus_df_pre.empty:
+            focus_df_pre = focus_df_pre.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+            focus_row_pre = focus_df_pre.iloc[0]
+            focus_sig = f"{selected_course_for_focus}|{int(focus_row_pre['주차'])}|{format_room_choice(focus_row_pre['강의실목록'])}|{str(focus_row_pre['학년정규화'])}"
+            if st.session_state.get("overall_course_focus_sig") != focus_sig:
+                st.session_state["overall_course_focus_sig"] = focus_sig
+                st.session_state["sim_week_view"] = f"{int(focus_row_pre['주차'])}주차"
+                st.session_state["overall_viz_room"] = str(normalize_room_choice(focus_row_pre["강의실목록"])[0])
+                st.session_state["overall_viz_grade"] = str(focus_row_pre["학년정규화"])
+    else:
+        st.session_state["overall_course_focus_sig"] = "전체"
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         sim_week_view = st.selectbox("주차", ["7주차", "8주차", "9주차"], key="sim_week_view")
@@ -2088,9 +2103,7 @@ elif menu == "전체 시간표":
     target_grade = normalize_grade_value(viz_grade)
     with c4:
         course_src = exam_df_view.copy()
-        if viz_grade != "전체":
-            course_src = course_src[course_src["학년정규화"] == target_grade]
-        course_options = ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist())
+        course_options = ["전체"] + sorted(exam_df_view["과목명"].astype(str).dropna().unique().tolist())
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
