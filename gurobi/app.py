@@ -2287,94 +2287,109 @@ elif menu == "전체 시간표":
                     st.info("현재 제약 조건에서 가능한 이동 후보가 없습니다.")
             else:
                 cand_df = pd.DataFrame(stored_candidates)
-                cand_df["warning_count"] = cand_df["경고"].apply(lambda x: 0 if str(x).strip() == "-" else len([p for p in str(x).split(",") if p.strip()]))
-                time_summary = (
-                    cand_df.groupby(["요일", "시작", "종료"], as_index=False)["warning_count"]
-                    .min()
-                    .sort_values(["요일", "시작"])
-                )
-                time_summary["time_label"] = time_summary.apply(
-                    lambda r: f"{r['요일']} {r['시작']}~{r['종료']} (경고 {int(r['warning_count'])}개)",
-                    axis=1,
-                )
-                time_opts = time_summary["time_label"].tolist()
-                tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
-                selected_time_row = time_summary[time_summary["time_label"] == tsel].iloc[0]
-                cand_time_df = cand_df[
-                    (cand_df["요일"] == selected_time_row["요일"])
-                    & (cand_df["시작"] == selected_time_row["시작"])
-                    & (cand_df["종료"] == selected_time_row["종료"])
-                ].copy()
-                room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
-                rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
-                cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
-                chosen_row = cand_choice_df.iloc[0]
-                out = scorer(
-                    exam_df=exam_df_view,
-                    target_idx=sel_idx,
-                    new_week=int(chosen_row["week"]),
-                    new_day=int(chosen_row["dnum"]),
-                    new_start=int(chosen_row["slot"]),
-                    new_room=chosen_row["room_combo"],
-                    student_sets=student_sets,
-                    summary=summary,
-                )
-                tday = str(chosen_row["요일"])
-                tstart = str(chosen_row["시작"])
-                sim_day_no = int(chosen_row["dnum"])
-                sim_start_slot = int(chosen_row["slot"])
-                sim_room_choice = list(chosen_row["room_combo"])
-
-                st.markdown("#### 선택 후보 요약")
-                st.markdown(
-                    (
-                        "<div class='candidate-card'>"
-                        "<div class='candidate-card-title'>가능 후보</div>"
-                        f"<div class='candidate-card-main'>{tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)}</div>"
-                        f"<div class='candidate-card-sub'>강의실: {chosen_row['강의실']}</div>"
-                        "</div>"
-                    ),
-                    unsafe_allow_html=True,
-                )
-                student_conflict = int(out.get("student_conflict_count", 0))
-                time_changed = int(out.get("time_move_delta", 0)) != 0
-                room_changed = int(out.get("room_change_delta", 0)) != 0
-                daily_inc = int(out.get("daily3_increase", 0)) > 0 or int(out.get("daily4_increase", 0)) > 0
-                dmax_tmax_warn = "D_MAX 초과" in str(chosen_row["경고"]) or "T_MAX 초과" in str(chosen_row["경고"])
-                obj_delta = float(out.get("objective_delta", 0.0))
-                badge_parts = [
-                    ("warn-green" if student_conflict == 0 else "warn-red", f"학생 충돌 {'없음' if student_conflict == 0 else f'{student_conflict}명'}"),
-                    ("warn-yellow" if room_changed else "warn-green", f"강의실 변경 {'발생' if room_changed else '없음'}"),
-                    ("warn-yellow" if time_changed else "warn-green", f"시간 변경 {'발생' if time_changed else '없음'}"),
-                    ("warn-red" if daily_inc else "warn-green", f"하루 시험 수 증가 {'있음' if daily_inc else '없음'}"),
-                    ("warn-orange" if dmax_tmax_warn else "warn-green", f"D_MAX/T_MAX {'초과' if dmax_tmax_warn else '정상'}"),
-                    ("warn-yellow" if obj_delta > 0 else "warn-green", f"목적함수 {obj_delta:+.4f}"),
-                ]
-                badge_html = "".join([f"<span class='warn-badge {cls}'>{label}</span>" for cls, label in badge_parts])
-                st.markdown(f"<div class='warn-badge-row'>{badge_html}</div>", unsafe_allow_html=True)
-                st.info(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
-                st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
-
-                st.markdown("#### 추천 후보 TOP3")
-                top3 = cand_df.copy()
-                top3["daily_exam_increase"] = (
-                    pd.to_numeric(top3["하루3개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
-                    + pd.to_numeric(top3["하루4개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
-                )
-                top3["time_changed"] = top3["경고"].astype(str).str.contains("시간 변경", regex=False).astype(int)
-                top3["room_changed"] = top3["경고"].astype(str).str.contains("강의실 변경", regex=False).astype(int)
-                top3 = top3.sort_values(
-                    by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed"],
-                    ascending=[True, True, True, True],
-                ).head(3)
-                for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
-                    st.write(
-                        f"추천 {rank}위: {rr['요일']} {rr['시작']}~{rr['종료']} | "
-                        f"강의실 {rr['강의실']} | Δ {float(rr['목적함수변화']):+.2f} | "
-                        f"하루 시험 수 변화 {int(rr['daily_exam_increase'])} | "
-                        f"시간 변경 {'예' if int(rr['time_changed']) else '아니오'} | "
-                        f"강의실 변경 {'예' if int(rr['room_changed']) else '아니오'}"
+                current_room_text = format_room_choice(sel_row["강의실목록"])
+                display_cand_df = cand_df[
+                    ~(
+                        (cand_df["week"].astype(int) == int(sel_row["주차"]))
+                        & (cand_df["dnum"].astype(int) == int(sel_row["요일번호"]))
+                        & (cand_df["slot"].astype(int) == int(sel_row["시작슬롯"]))
+                        & (cand_df["강의실"].astype(str) == current_room_text)
                     )
+                ].copy()
+                if display_cand_df.empty:
+                    st.info("현재 조건에서 실질적인 이동 후보가 없습니다.")
+                else:
+                    display_cand_df["warning_count"] = display_cand_df["경고"].apply(lambda x: 0 if str(x).strip() == "-" else len([p for p in str(x).split(",") if p.strip()]))
+                    time_summary = (
+                        display_cand_df.groupby(["요일", "시작", "종료"], as_index=False)["warning_count"]
+                        .min()
+                        .sort_values(["요일", "시작"])
+                    )
+                    time_summary["time_label"] = time_summary.apply(
+                        lambda r: f"{r['요일']} {r['시작']}~{r['종료']} (경고 {int(r['warning_count'])}개)",
+                        axis=1,
+                    )
+                    time_opts = time_summary["time_label"].tolist()
+                    tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                    selected_time_row = time_summary[time_summary["time_label"] == tsel].iloc[0]
+                    cand_time_df = display_cand_df[
+                        (display_cand_df["요일"] == selected_time_row["요일"])
+                        & (display_cand_df["시작"] == selected_time_row["시작"])
+                        & (display_cand_df["종료"] == selected_time_row["종료"])
+                    ].copy()
+                    room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
+                    rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
+                    cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
+                    chosen_row = cand_choice_df.iloc[0]
+                    out = scorer(
+                        exam_df=exam_df_view,
+                        target_idx=sel_idx,
+                        new_week=int(chosen_row["week"]),
+                        new_day=int(chosen_row["dnum"]),
+                        new_start=int(chosen_row["slot"]),
+                        new_room=chosen_row["room_combo"],
+                        student_sets=student_sets,
+                        summary=summary,
+                    )
+                    tday = str(chosen_row["요일"])
+                    tstart = str(chosen_row["시작"])
+                    sim_day_no = int(chosen_row["dnum"])
+                    sim_start_slot = int(chosen_row["slot"])
+                    sim_room_choice = list(chosen_row["room_combo"])
+
+                    st.markdown("#### 선택 후보 요약")
+                    st.markdown(
+                        (
+                            "<div class='candidate-card'>"
+                            "<div class='candidate-card-title'>가능 후보</div>"
+                            f"<div class='candidate-card-main'>{tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)}</div>"
+                            f"<div class='candidate-card-sub'>강의실: {chosen_row['강의실']}</div>"
+                            "</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    student_conflict = int(out.get("student_conflict_count", 0))
+                    time_changed = int(out.get("time_move_delta", 0)) != 0
+                    room_changed = int(out.get("room_change_delta", 0)) != 0
+                    daily_inc = int(out.get("daily3_increase", 0)) > 0 or int(out.get("daily4_increase", 0)) > 0
+                    dmax_tmax_warn = "D_MAX 초과" in str(chosen_row["경고"]) or "T_MAX 초과" in str(chosen_row["경고"])
+                    obj_delta = float(out.get("objective_delta", 0.0))
+                    badge_parts = [
+                        ("warn-green" if student_conflict == 0 else "warn-red", f"학생 충돌 {'없음' if student_conflict == 0 else f'{student_conflict}명'}"),
+                        ("warn-yellow" if room_changed else "warn-green", f"강의실 변경 {'발생' if room_changed else '없음'}"),
+                        ("warn-yellow" if time_changed else "warn-green", f"시간 변경 {'발생' if time_changed else '없음'}"),
+                        ("warn-red" if daily_inc else "warn-green", f"하루 시험 수 증가 {'있음' if daily_inc else '없음'}"),
+                        ("warn-orange" if dmax_tmax_warn else "warn-green", f"D_MAX/T_MAX {'초과' if dmax_tmax_warn else '정상'}"),
+                        ("warn-yellow" if obj_delta > 0 else "warn-green", f"목적함수 {obj_delta:+.4f}"),
+                    ]
+                    badge_html = "".join([f"<span class='warn-badge {cls}'>{label}</span>" for cls, label in badge_parts])
+                    st.markdown(f"<div class='warn-badge-row'>{badge_html}</div>", unsafe_allow_html=True)
+                    st.info(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
+                    st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
+
+                    st.markdown("#### 추천 후보 TOP3")
+                    top3 = display_cand_df.copy()
+                    top3["daily_exam_increase"] = (
+                        pd.to_numeric(top3["하루3개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
+                        + pd.to_numeric(top3["하루4개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
+                    )
+                    top3["time_changed"] = top3["경고"].astype(str).str.contains("시간 변경", regex=False).astype(int)
+                    top3["room_changed"] = top3["경고"].astype(str).str.contains("강의실 변경", regex=False).astype(int)
+                    top3 = top3.sort_values(
+                        by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed"],
+                        ascending=[True, True, True, True],
+                    ).head(3)
+                    if top3.empty:
+                        st.info("현재 조건에서 실질적인 이동 후보가 없습니다.")
+                    else:
+                        for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
+                            st.write(
+                                f"추천 {rank}위: {rr['요일']} {rr['시작']}~{rr['종료']} | "
+                                f"강의실 {rr['강의실']} | Δ {float(rr['목적함수변화']):+.2f} | "
+                                f"하루 시험 수 변화 {int(rr['daily_exam_increase'])} | "
+                                f"시간 변경 {'예' if int(rr['time_changed']) else '아니오'} | "
+                                f"강의실 변경 {'예' if int(rr['room_changed']) else '아니오'}"
+                            )
 
         if st.session_state.manual_moves:
             rows = []
