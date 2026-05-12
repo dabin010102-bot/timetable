@@ -1074,7 +1074,24 @@ def build_grade_map_from_courseen(df_courseen: pd.DataFrame) -> dict[str, str]:
             continue
         exact_key = normalize_exact(cname)
         base_key = normalize_name(cname)
-        for key in {exact_key, base_key}:
+        matched_course = None
+        for course, aliases in ALIASES.items():
+            if exact_key == normalize_exact(course) or base_key == normalize_name(course):
+                matched_course = course
+                break
+            if any(exact_key == normalize_exact(alias) or base_key == normalize_name(alias) for alias in aliases):
+                matched_course = course
+                break
+
+        keys = {exact_key, base_key}
+        if matched_course is not None:
+            keys.add(normalize_exact(matched_course))
+            keys.add(normalize_name(matched_course))
+            for alias in ALIASES.get(matched_course, [matched_course]):
+                keys.add(normalize_exact(alias))
+                keys.add(normalize_name(alias))
+
+        for key in keys:
             if key and key not in grade_map:
                 grade_map[key] = norm_grade
     return grade_map
