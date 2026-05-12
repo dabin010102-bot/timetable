@@ -2076,6 +2076,22 @@ elif menu == "전체 시간표":
         course_options = ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist())
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
+    if viz_course != "전체":
+        focus_df = course_src[course_src["과목명"].astype(str) == str(viz_course)].copy()
+        if not focus_df.empty:
+            focus_df = focus_df.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+            focus_row = focus_df.iloc[0]
+            target_week_label = f"{int(focus_row['주차'])}주차"
+            target_room_label = str(normalize_room_choice(focus_row["강의실목록"])[0])
+            focus_sig = f"{viz_grade}|{viz_course}"
+            if st.session_state.get("overall_course_focus_sig") != focus_sig:
+                st.session_state["overall_course_focus_sig"] = focus_sig
+                st.session_state["sim_week_view"] = target_week_label
+                st.session_state["overall_viz_room"] = target_room_label
+                st.rerun()
+    else:
+        st.session_state["overall_course_focus_sig"] = "전체"
+
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
     current_filter_sig = f"{sim_week_num}|{viz_room}|{viz_grade}|{viz_course}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
