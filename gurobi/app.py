@@ -613,10 +613,10 @@ def detect_id_col(df_is: pd.DataFrame) -> str:
 
 
 def resolve_is_columns_for_course(is_cols: list[str], course_name: str) -> list[str]:
-    nc = normalize_name(course_name)
+    nc = normalize_exact(course_name)
     matched = []
     for c in is_cols:
-        ncol = normalize_name(c)
+        ncol = normalize_exact(c)
         if ncol == nc or ncol.startswith(nc) or nc.startswith(ncol):
             matched.append(c)
     return matched
