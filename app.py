@@ -753,6 +753,7 @@ def score_move_impact(
     return {
         "feasible": True,
         "affected_students": affected_students,
+        "student_conflict_count": 0,
         "daily3_increase": after_3 - before_3,
         "daily4_increase": after_4 - before_4,
         "room_change_delta": new_room_move - base_room_move,
@@ -1827,7 +1828,7 @@ if menu == "학번별 조회":
                 unsafe_allow_html=True,
             )
 
-            # 캘린더 다운로드는 PNG 1개(존재 주차만 포함)만 제공
+            # 개인 시간표 저장
             png_bytes = make_student_calendar_png(df_student, sid)
             if png_bytes is not None:
                 st.download_button(
@@ -1836,19 +1837,18 @@ if menu == "학번별 조회":
                     file_name=f"student_{sid}_calendar.png",
                     mime="image/png",
                 )
-
-            st.markdown("#### 시각화 파일")
-            room_choice_student = st.selectbox(
-                "강의실 선택(학번별 조회)",
-                [str(r) for r in ROOM_ORDER],
-                index=0,
-                key="student_room_select",
+            st.download_button(
+                "시간표 CSV 저장",
+                data=df_student[show_cols].to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"student_{sid}_timetable.csv",
+                mime="text/csv",
             )
-            selected_room_path_student = report_dir / f"page_room_{room_choice_student}.png" if report_dir is not None else None
-            if selected_room_path_student is not None and selected_room_path_student.exists():
-                st.image(str(selected_room_path_student), use_container_width=True)
-            else:
-                render_room_calendar_fallback(exam_df, int(room_choice_student), "student_room_fallback")
+            st.download_button(
+                "캘린더(.ics) 저장",
+                data=make_student_calendar_ics(df_student, sid),
+                file_name=f"student_{sid}_exam_calendar.ics",
+                mime="text/calendar",
+            )
 
             # 해석 문구
             total_n = len(df_student)
@@ -1872,6 +1872,7 @@ if menu == "학번별 조회":
 
 elif menu == "전체 시간표":
     st.subheader("전체 시간표")
+    st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
 
     if "manual_moves" not in st.session_state:
         st.session_state.manual_moves = {}
@@ -1978,6 +1979,7 @@ elif menu == "전체 시간표":
             f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
             f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
         )
+        mode = st.radio("후보 표시 모드", ["Relaxed", "Strict"], index=0, horizontal=True, key="sim_mode")
         if selectable_week.empty:
             st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
@@ -2033,7 +2035,8 @@ elif menu == "전체 시간표":
             blocked_other = 0
             try:
                 for rr in raw_rows:
-                    out_strict = score_move_impact(
+                    scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
+                    out_eval = scorer(
                         exam_df=exam_df_view,
                         target_idx=sel_idx,
                         new_week=int(sim_week_num),
@@ -2043,21 +2046,22 @@ elif menu == "전체 시간표":
                         student_sets=student_sets,
                         summary=summary,
                     )
-                    if out_strict.get("feasible", False):
+                    if out_eval.get("feasible", False):
                         feasible_rows.append(
                             {
                                 "요일": rr["요일"],
                                 "시작": rr["시작"],
                                 "종료": rr["종료"],
                                 "강의실": rr["강의실"],
-                                "영향학생수": int(out_strict.get("affected_students", 0)),
-                                "하루3개증가": int(out_strict.get("daily3_increase", 0)),
-                                "하루4개증가": int(out_strict.get("daily4_increase", 0)),
-                                "목적함수변화": float(out_strict.get("objective_delta", 0.0)),
+                                "영향학생수": int(out_eval.get("affected_students", 0)),
+                                "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                                "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                                "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                                "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
                             }
                         )
                     else:
-                        reason = str(out_strict.get("reason", ""))
+                        reason = str(out_eval.get("reason", ""))
                         if "강의실 중복" in reason:
                             blocked_room += 1
                         elif "학생 동시시험" in reason:
@@ -2068,24 +2072,23 @@ elif menu == "전체 시간표":
                 st.error(f"후보 계산 중 오류: {_calc_err}")
             st.caption(f"가능 후보 수: {len(feasible_rows)}")
             if not feasible_rows:
-                # 엄격 후보가 없으면 전체 후보를 완화 후보로 제공(이동 UI 강제 노출)
-                for rr in raw_rows:
-                    feasible_rows.append(
-                        {
-                            "요일": rr["요일"],
-                            "시작": rr["시작"],
-                            "종료": rr["종료"],
-                            "강의실": rr["강의실"],
-                            "영향학생수": 0,
-                            "하루3개증가": 0,
-                            "하루4개증가": 0,
-                            "목적함수변화": 0.0,
-                        }
-                    )
                 st.warning(
                     f"엄격 후보 0개: 강의실중복 차단 {blocked_room}건, 학생동시시험 차단 {blocked_student}건, 기타 {blocked_other}건. "
-                    "완화 후보(전체)를 표시합니다."
+                    "현재 조건이 너무 엄격합니다."
                 )
+            else:
+                cand_df = pd.DataFrame(feasible_rows).sort_values(
+                    ["목적함수변화", "학생충돌수", "하루4개증가", "하루3개증가"]
+                ).reset_index(drop=True)
+                st.dataframe(
+                    cand_df[["요일", "시작", "종료", "강의실", "영향학생수", "학생충돌수", "하루3개증가", "하루4개증가", "목적함수변화"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.markdown("#### 추천 후보 TOP3")
+                top3 = cand_df.head(3)
+                for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
+                    st.write(f"{rank}순위: {rr['요일']} {rr['시작']} / {int(rr['강의실'])}호 | Δ {float(rr['목적함수변화']):+.2f} | 학생충돌 {int(rr['학생충돌수'])}명")
 
             # 사용자가 고른 시간/강의실 조합을 즉시 평가한다.
             tday = str(tsel).split(" ")[0]
@@ -2109,7 +2112,10 @@ elif menu == "전체 시간표":
                 st.warning(f"선택 조합은 엄격 제약에서 불가: {out.get('reason', '사유 없음')}")
             else:
                 st.markdown("#### 영향 요약")
+                st.write(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
+                st.write(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {sim_room}")
                 st.write(f"영향학생: {int(out.get('affected_students', 0))}명")
+                st.write(f"학생충돌 수: {int(out.get('student_conflict_count', 0))}명")
                 st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
                 st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
                 st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
@@ -2137,7 +2143,14 @@ elif menu == "전체 시간표":
                         "강의실": int(mv["room"]),
                     }
                 )
-            st.dataframe(pd.DataFrame(rows).sort_values(["주차", "요일", "시작"]), use_container_width=True, hide_index=True)
+            sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
+            st.dataframe(sim_df, use_container_width=True, hide_index=True)
+            st.download_button(
+                "시뮬레이션 결과 CSV 다운로드",
+                data=sim_df.to_csv(index=False).encode("utf-8-sig"),
+                file_name="simulation_moves.csv",
+                mime="text/csv",
+            )
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
