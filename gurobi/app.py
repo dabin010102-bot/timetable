@@ -980,9 +980,14 @@ def build_grade_map_from_courseen(df_courseen: pd.DataFrame) -> dict[str, str]:
         g = str(row.get(grade_col, "")).strip()
         if not g or g.lower() == "nan":
             continue
-        key = normalize_name(cname)
-        if key and key not in grade_map:
-            grade_map[key] = g
+        norm_grade = normalize_grade_value(g)
+        if norm_grade == "-":
+            continue
+        exact_key = normalize_exact(cname)
+        base_key = normalize_name(cname)
+        for key in {exact_key, base_key}:
+            if key and key not in grade_map:
+                grade_map[key] = norm_grade
     return grade_map
 
 
@@ -1028,7 +1033,10 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
         time_status.append("시간 변경" if time_changed else "유지")
         room_status.append("강의실 변경" if room_changed else "유지")
         final_status.append(fs)
-        grade_col.append(grade_map.get(key, meta.get("grade", "-")))
+        grade_val = grade_map.get(key, meta.get("grade", "-"))
+        if normalize_grade_value(grade_val) == "-":
+            grade_val = fallback_grade_for_course(r.get("과목", r.get("과목명", "")))
+        grade_col.append(grade_val)
 
         if slots:
             first_slot = sorted(slots)[0]
@@ -1152,7 +1160,10 @@ def add_change_columns_student(
         room_status.append("강의실 변경" if room_changed else "유지")
         final_status.append(fs)
         section_used.append(picked_section)
-        grade_col.append(grade_map.get(base_key, meta.get("grade", "-")))
+        grade_val = grade_map.get(base_key, meta.get("grade", "-"))
+        if normalize_grade_value(grade_val) == "-":
+            grade_val = fallback_grade_for_course(course)
+        grade_col.append(grade_val)
 
     out["분반기준"] = section_used
     out["학년"] = grade_col
@@ -1481,15 +1492,18 @@ def fill_missing_grade(df: pd.DataFrame, grade_map: dict[str, str]) -> pd.DataFr
     filled = []
     for _, row in out.iterrows():
         val = str(row.get("학년", "")).strip()
-        if val and val != "-" and val.lower() != "nan":
-            filled.append(val)
+        norm_val = normalize_grade_value(val)
+        if norm_val != "-":
+            filled.append(norm_val)
             continue
         key = str(row.get("정규과목", "")).strip()
         if not key:
             key = normalize_name(row.get("과목", ""))
-        # 원본 학년 데이터가 없을 때 임의 숫자 부여를 하지 않고 '-'로 유지한다.
-        filled.append(grade_map.get(key, "-"))
-    out["학년"] = [normalize_grade_value(v) for v in filled]
+        grade_val = grade_map.get(key, "-")
+        if normalize_grade_value(grade_val) == "-":
+            grade_val = fallback_grade_for_course(row.get("과목", row.get("과목명", "")))
+        filled.append(normalize_grade_value(grade_val))
+    out["학년"] = filled
     return out
 
 
