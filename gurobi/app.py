@@ -407,11 +407,11 @@ COURSE_NAME_KO = {
 COURSE_GRADE_FALLBACK = {
     "Calculus(1)": "1",
     "IntroIE&M": "1",
-    "GenAIApps": "3",
-    "Database": "3",
-    "Det.ManageSci": "3",
-    "Ergonomics": "3",
-    "Prob&Stats(1)": "3",
+    "GenAIApps": "1",
+    "Database": "2",
+    "Det.ManageSci": "2",
+    "Ergonomics": "2",
+    "Prob&Stats(1)": "2",
     "ProdDevProcess": "3",
     "QualityEng": "3",
     "ReinforcLearn": "4",
@@ -2472,6 +2472,20 @@ elif menu == "전체 시간표":
                 file_name="simulation_moves.csv",
                 mime="text/csv",
             )
+
+    st.markdown("#### 현재 필터 시험 상세 표")
+    whole_table_cols = [
+        "과목명", "학년", "주차", "요일", "날짜", "시작", "종료", "시험시간(분)", "강의실",
+    ]
+    whole_table_df = calendar_src.copy()
+    for col in whole_table_cols:
+        if col not in whole_table_df.columns:
+            whole_table_df[col] = "-"
+    whole_table_df = whole_table_df[whole_table_cols].sort_values(["주차", "요일", "시작", "과목명"]).reset_index(drop=True)
+    st.markdown(
+        dataframe_to_html_table(whole_table_df),
+        unsafe_allow_html=True,
+    )
 
     button_row = st.columns(3)
     with button_row[0]:
