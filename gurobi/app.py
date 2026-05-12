@@ -1800,10 +1800,8 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//INUTimetable//Exam Timetable//KO",
+        "PRODID:-//INU Timetable//EN",
         "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
-        f"X-WR-CALNAME:INUTimetable {esc(sid)} 시험시간표",
     ]
 
     for _, r in df_student.sort_values(["start_dt", "과목명"]).iterrows():
@@ -1811,12 +1809,7 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
         end = pd.to_datetime(r["end_dt"]).strftime("%Y%m%dT%H%M%S")
         course = esc(r.get("과목명", r.get("과목", "")))
         room = esc(r.get("강의실", "-"))
-        week = esc(r.get("주차", "-"))
         uid = f"inutimetable-{sid}-{int(r.get('시험인덱스', 0))}@inu"
-        desc = esc(
-            f"{week}주차 {r.get('요일', '')} {r.get('시작', '')}~{r.get('종료', '')} / "
-            f"강의실 {room} / {r.get('시험시간(분)', '')}분"
-        )
         lines.extend(
             [
                 "BEGIN:VEVENT",
@@ -1825,8 +1818,8 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
                 f"DTSTART:{start}",
                 f"DTEND:{end}",
                 f"SUMMARY:{course} 시험",
-                f"LOCATION:강의실 {room}",
-                f"DESCRIPTION:{desc}",
+                f"LOCATION:{room}",
+                "DESCRIPTION:시험시간표",
                 "END:VEVENT",
             ]
         )
