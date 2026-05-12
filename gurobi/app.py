@@ -2078,12 +2078,7 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        st.caption("완화 모드에서는 운영상 필수 제약만 강제하고, 나머지는 경고로 표시합니다.")
-        st.caption(
-            f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
-            f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
-        )
-        mode = st.radio("후보 표시 모드", ["Relaxed", "Strict"], index=0, horizontal=True, key="sim_mode")
+        st.caption("운영상 필수 제약을 만족하는 이동 후보만 표시합니다.")
         if selectable_week.empty:
             st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
@@ -2110,7 +2105,6 @@ elif menu == "전체 시간표":
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
                 "week": int(sim_week_num),
-                "mode": str(mode),
             }
             if st.session_state.get("move_candidate_meta") != current_candidate_context:
                 st.session_state["move_candidates"] = []
@@ -2185,12 +2179,13 @@ elif menu == "전체 시간표":
                 "room_combos_count": len(room_combo_candidates),
                 "raw_candidate_count": 0,
             }
-            scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
+            scorer = score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
                 try:
                     if is_bundle:
                         debug_counts["section_consecutive_fail"] += 1
+                        raise StopIteration
                     for week in weeks_to_search:
                         for dnum in [1, 2, 3, 4, 5]:
                             for st_slot in start_slots_to_search:
@@ -2226,14 +2221,12 @@ elif menu == "전체 시간표":
                                             warning_items.append("D_MAX 초과")
                                         if abs(int(st_slot) - orig_start) > T_MAX:
                                             warning_items.append("T_MAX 초과")
-                                        if int(week) != int(sel_row["주차"]):
-                                            warning_items.append("주차 변경")
                                         if int(st_slot) != int(orig_start):
-                                            warning_items.append("원래 시간 변경")
+                                            warning_items.append("시간 변경")
                                         if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
-                                            warning_items.append("원래 강의실 변경")
-                                        if int(out_eval.get("daily3_increase", 0)) > 0:
-                                            warning_items.append("하루 3시험 가능성")
+                                            warning_items.append("강의실 변경")
+                                        if int(out_eval.get("daily3_increase", 0)) > 0 or int(out_eval.get("daily4_increase", 0)) > 0:
+                                            warning_items.append("하루 시험 수 증가")
                                         if float(out_eval.get("objective_delta", 0.0)) > 0:
                                             warning_items.append("목적함수 증가")
 
