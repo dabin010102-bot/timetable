@@ -955,25 +955,29 @@ def recommend_move_alternatives(
                     res = score_move_impact(exam_df, target_idx, w, d, st, int(room), student_sets, summary)
                     if not res.get("feasible", False):
                         continue
-                    impact = (
-                        abs(float(res["objective_delta"])) * 1000
-                        + max(0, int(res["daily4_increase"])) * 100000
-                        + max(0, int(res["daily3_increase"])) * 1000
-                    )
                     if w == cur_week and d == cur_day and st == cur_start and room in set(int(x) for x in target["강의실목록"]):
                         continue
-                    tag = "학생충돌0/영향작음"
-                    if int(res["room_change_delta"]) <= 0 and int(res["time_move_delta"]) == 0:
-                        tag = "강의실변경 최소"
-                    elif int(res["daily3_increase"]) > 0:
-                        tag = "일부 학생부담 증가"
+                    daily_exam_increase = max(0, int(res.get("daily3_increase", 0))) + max(0, int(res.get("daily4_increase", 0)))
+                    time_changed = 1 if int(res.get("time_move_delta", 0)) != 0 else 0
+                    room_changed = 1 if int(res.get("room_change_delta", 0)) != 0 else 0
                     candidates.append(
                         {
                             "week": w, "day": d, "start": st, "room": int(room),
-                            "impact": impact, "tag": tag, **res
+                            "daily_exam_increase": daily_exam_increase,
+                            "time_changed": time_changed,
+                            "room_changed": room_changed,
+                            **res,
                         }
                     )
-    candidates = sorted(candidates, key=lambda x: (x["impact"], x["objective_delta"]))
+    candidates = sorted(
+        candidates,
+        key=lambda x: (
+            float(x.get("objective_delta", 0.0)),
+            int(x.get("daily_exam_increase", 0)),
+            int(x.get("time_changed", 0)),
+            int(x.get("room_changed", 0)),
+        ),
+    )
     return candidates[:topn]
 
 
@@ -2349,11 +2353,24 @@ elif menu == "전체 시간표":
                 st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
 
                 st.markdown("#### 추천 후보 TOP3")
-                top3 = cand_df.head(3)
+                top3 = cand_df.copy()
+                top3["daily_exam_increase"] = (
+                    pd.to_numeric(top3["하루3개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
+                    + pd.to_numeric(top3["하루4개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
+                )
+                top3["time_changed"] = top3["경고"].astype(str).str.contains("시간 변경", regex=False).astype(int)
+                top3["room_changed"] = top3["경고"].astype(str).str.contains("강의실 변경", regex=False).astype(int)
+                top3 = top3.sort_values(
+                    by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed"],
+                    ascending=[True, True, True, True],
+                ).head(3)
                 for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
                     st.write(
-                        f"{rank}순위: {rr['요일']} {rr['시작']} / {rr['강의실']}호 | "
-                        f"Δ {float(rr['목적함수변화']):+.2f} | 학생충돌 {int(rr['학생충돌수'])}명"
+                        f"추천 {rank}위: {rr['요일']} {rr['시작']}~{rr['종료']} | "
+                        f"강의실 {rr['강의실']} | Δ {float(rr['목적함수변화']):+.2f} | "
+                        f"하루 시험 수 변화 {int(rr['daily_exam_increase'])} | "
+                        f"시간 변경 {'예' if int(rr['time_changed']) else '아니오'} | "
+                        f"강의실 변경 {'예' if int(rr['room_changed']) else '아니오'}"
                     )
 
         if st.session_state.manual_moves:
