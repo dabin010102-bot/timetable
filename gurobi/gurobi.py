@@ -565,7 +565,8 @@ def resolve_available_exam_columns(headers: list[str], course_keys: list[str]) -
         matched = []
         for col in headers:
             ncol = normalize_exam_key(col)
-            if ncol == exam or ncol.startswith(exam) or exam.startswith(ncol):
+            # 분반까지 정확히 같은 컬럼만 연결
+            if ncol == exam:
                 matched.append(col)
         if matched:
             exam_cols[exam] = matched
