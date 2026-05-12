@@ -2069,26 +2069,40 @@ elif menu == "전체 시간표":
             is_bundle = group_count >= 2
             enrollment = len(student_sets.get(int(sel_idx), set()))
             need_room = max(1, len(sel_row["강의실목록"]))
-            weeks_to_search = [int(sim_week_num)]
+            weeks_to_search = [int(sel_row["주차"])]
             if "fixed_week" in sel_row and pd.notna(sel_row.get("fixed_week")):
                 weeks_to_search = [int(sel_row["fixed_week"])]
-            elif "주차" in sel_row:
-                weeks_to_search = [int(sel_row["주차"])]
             if not weeks_to_search:
                 weeks_to_search = [int(sel_row["주차"])]
 
-            start_slots_to_search = list(range(0, 19))
+            current_start_slot = int(sel_row["시작슬롯"])
+            start_slots_to_search = [
+                s for s in range(current_start_slot - 2, current_start_slot + 3)
+                if 0 <= s <= 18
+            ]
             if not start_slots_to_search:
                 start_slots_to_search = list(range(0, 19))
 
+            current_rooms = [int(x) for x in sel_row["강의실목록"]]
+            nearby_room_candidates: list[int] = []
+            for room in current_rooms:
+                if room not in ROOM_ORDER:
+                    continue
+                ridx = ROOM_ORDER.index(room)
+                for pos in range(max(0, ridx - 2), min(len(ROOM_ORDER), ridx + 3)):
+                    nearby_room_candidates.append(int(ROOM_ORDER[pos]))
+            nearby_room_candidates = sorted(set(nearby_room_candidates)) or current_rooms or ROOM_ORDER
             room_combo_candidates = []
-            for combo in combinations(ROOM_ORDER, need_room):
+            for combo in combinations(nearby_room_candidates, need_room):
                 total_cap = sum(ROOM_CAP[int(r)] for r in combo)
                 if total_cap >= enrollment:
                     room_combo_candidates.append(tuple(int(r) for r in combo))
             if not room_combo_candidates:
                 current_room_count = max(1, len(sel_row["강의실목록"]))
-                room_combo_candidates = [tuple(int(r) for r in combo) for combo in combinations(ROOM_ORDER, current_room_count)]
+                room_combo_candidates = [
+                    tuple(int(r) for r in combo)
+                    for combo in combinations(nearby_room_candidates, current_room_count)
+                ]
 
             debug_counts = {
                 "need_room_mismatch": 0,
@@ -2111,6 +2125,15 @@ elif menu == "전체 시간표":
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
+                pre_debug = {
+                    "selected_exam_idx": int(sel_idx),
+                    "target_row_empty": bool(target_row.empty),
+                    "group_count": int(group_count),
+                    "weeks_to_search": weeks_to_search,
+                    "start_slots_count": len(start_slots_to_search),
+                    "room_combos_count": len(room_combo_candidates),
+                }
+                st.json(pre_debug)
                 try:
                     if is_bundle:
                         debug_counts["section_consecutive_fail"] += 1
@@ -2121,6 +2144,9 @@ elif menu == "전체 시간표":
                                     continue
                                 for room_combo in room_combo_candidates:
                                     debug_counts["raw_candidate_count"] += 1
+                                    if debug_counts["raw_candidate_count"] > 500:
+                                        st.warning("raw_candidate_count가 500개를 넘어 탐색을 중단합니다.")
+                                        raise StopIteration
                                     if len(room_combo) != need_room:
                                         debug_counts["need_room_mismatch"] += 1
                                         continue
@@ -2175,6 +2201,8 @@ elif menu == "전체 시간표":
                                                 "slot": int(st_slot),
                                             }
                                         )
+                                        if len(move_candidates) >= 20:
+                                            raise StopIteration
                                     else:
                                         reason = str(out_eval.get("reason", ""))
                                         if "강의실 중복" in reason:
@@ -2184,7 +2212,9 @@ elif menu == "전체 시간표":
                     move_candidates = sorted(
                         move_candidates,
                         key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
-                    )[:30]
+                    )[:20]
+                except StopIteration:
+                    pass
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
 
@@ -2192,8 +2222,6 @@ elif menu == "전체 시간표":
                 st.session_state["move_candidates"] = move_candidates
                 st.session_state["move_candidate_reasons"] = debug_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
-                st.rerun()
-
             stored_candidates = st.session_state.get("move_candidates", [])
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
