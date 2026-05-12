@@ -2074,24 +2074,34 @@ elif menu == "전체 시간표":
             if not room_combo_candidates:
                 room_combo_candidates = [tuple(int(r) for r in sel_row["강의실목록"])]
 
-            blocked_counts = {
-                "주차 고정 위반": 0,
-                "필요강의실수/수용인원 부족": 0,
-                "강의실 중복": 0,
-                "학생 동시시험": 0,
-                "분반 연속배정 불가": 0,
-                "최종 가능 후보": 0,
+            debug_counts = {
+                "need_room_mismatch": 0,
+                "capacity_fail": 0,
+                "room_overlap_fail": 0,
+                "student_conflict_fail": 0,
+                "section_consecutive_fail": 0,
+                "fixed_week_fail": 0,
+                "feasible_count": 0,
             }
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
                 try:
+                    if same_base_count > 1:
+                        debug_counts["section_consecutive_fail"] += 1
                     for week in allowed_weeks:
                         for dnum in [1, 2, 3, 4, 5]:
                             for st_slot in range(0, 19):
                                 if st_slot + dur_slots > 22:
                                     continue
                                 for room_combo in room_combo_candidates:
+                                    if len(room_combo) != need_room:
+                                        debug_counts["need_room_mismatch"] += 1
+                                        continue
+                                    total_cap = sum(ROOM_CAP[int(r)] for r in room_combo)
+                                    if total_cap < enrollment:
+                                        debug_counts["capacity_fail"] += 1
+                                        continue
                                     out_eval = scorer(
                                         exam_df=exam_df_view,
                                         target_idx=sel_idx,
@@ -2142,9 +2152,9 @@ elif menu == "전체 시간표":
                                     else:
                                         reason = str(out_eval.get("reason", ""))
                                         if "강의실 중복" in reason:
-                                            blocked_counts["강의실 중복"] += 1
+                                            debug_counts["room_overlap_fail"] += 1
                                         elif "학생 동시시험" in reason:
-                                            blocked_counts["학생 동시시험"] += 1
+                                            debug_counts["student_conflict_fail"] += 1
                     move_candidates = sorted(
                         move_candidates,
                         key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
@@ -2152,20 +2162,20 @@ elif menu == "전체 시간표":
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
 
-                blocked_counts["최종 가능 후보"] = len(move_candidates)
+                debug_counts["feasible_count"] = len(move_candidates)
                 st.session_state["move_candidates"] = move_candidates
-                st.session_state["move_candidate_reasons"] = blocked_counts
+                st.session_state["move_candidate_reasons"] = debug_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
                 st.rerun()
 
             stored_candidates = st.session_state.get("move_candidates", [])
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
+            if stored_reasons:
+                st.json(stored_reasons)
             if not stored_candidates:
                 if stored_reasons:
                     st.warning("가능한 이동 후보가 없습니다.")
-                    for label, count in stored_reasons.items():
-                        st.write(f"- {label}: {int(count)}개")
             else:
                 cand_df = pd.DataFrame(stored_candidates)
                 time_opts = (
