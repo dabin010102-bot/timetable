@@ -676,9 +676,16 @@ def build_instance_18() -> dict:
         week_sessions = [s for s in ot_meta[name]["Sessions"] if s.get("week") == TARGET_WEEK]
         base_sessions = week_sessions if week_sessions else ot_meta[name]["Sessions"]
         dur_candidates = [int(s.get("duration", DUR_DEFAULT_SLOTS)) for s in base_sessions]
-        dur_min_candidates = [int(s.get("duration_min", DUR_DEFAULT_SLOTS * 30)) for s in base_sessions]
-        dur_slots = max(1, max(dur_candidates) if dur_candidates else DUR_DEFAULT_SLOTS)
-        dur_minutes = max(1, max(dur_min_candidates) if dur_min_candidates else dur_slots * 30)
+        dur_min_candidates = [int(s.get("duration_min", DUR_DEFAULT_SLOTS * 30)) for s in base_sessions if int(s.get("duration_min", 0)) > 0]
+        unique_dur_minutes = sorted(set(dur_min_candidates))
+        if len(unique_dur_minutes) >= 2:
+            # OT 원본에 같은 과목 시험시간이 다르게 들어간 경우에는
+            # 더 짧은 유효 시험시간을 기준으로 시험 길이를 통일한다.
+            dur_minutes = unique_dur_minutes[0]
+            dur_slots = max(1, minute_duration_to_slots(dur_minutes))
+        else:
+            dur_slots = max(1, max(dur_candidates) if dur_candidates else DUR_DEFAULT_SLOTS)
+            dur_minutes = max(1, unique_dur_minutes[0] if unique_dur_minutes else dur_slots * 30)
 
         exams.append(
             {
