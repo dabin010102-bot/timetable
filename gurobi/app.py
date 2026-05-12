@@ -1883,6 +1883,11 @@ if "move_candidate_meta" not in st.session_state:
 
 base_exam_df = exam_df.copy()
 display_exam_df = apply_manual_moves(base_exam_df, st.session_state.manual_moves)
+display_exam_df["강의실목록"] = display_exam_df.apply(
+    lambda r: normalize_room_choice(r.get("강의실목록", r.get("강의실", []))),
+    axis=1,
+)
+display_exam_df["강의실"] = display_exam_df["강의실목록"].apply(format_room_choice)
 display_exam_df = add_change_columns(display_exam_df, orig_maps, grade_map)
 display_exam_df = fill_missing_grade(display_exam_df, grade_map)
 display_decision_df = build_decision_df(payload, display_exam_df)
@@ -1910,7 +1915,7 @@ with st.sidebar:
 # 전체 요약 카드
 g1, g2, g3, g4, g5 = st.columns(5)
 g1.metric("전체 시험 과목 수", int(display_exam_df["과목"].nunique()))
-used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
+used_rooms = set(r for rooms in display_exam_df["강의실목록"] for r in normalize_room_choice(rooms))
 g2.metric("사용/후보 강의실 수", f"{len(used_rooms)}/{len(ROOM_ORDER)}")
 g3.metric("학생 충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
 g4.metric("분반 연속배정 위반", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
