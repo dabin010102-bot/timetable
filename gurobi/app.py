@@ -413,16 +413,16 @@ COURSE_GRADE_FALLBACK = {
     "Ergonomics": "3",
     "Prob&Stats(1)": "3",
     "ProdDevProcess": "3",
-    "QualityEng": "4",
-    "ReinforcLearn": "3",
-    "SmartLogistics": "3",
+    "QualityEng": "3",
+    "ReinforcLearn": "4",
+    "SmartLogistics": "4",
     "DataMining": "3",
     "ErgoExpEval": "3",
     "IntroFinEng": "3",
     "Optim&Apps": "3",
     "ProdControl": "3",
-    "Corp&Safety": "3",
-    "SmartMfg&Auto": "3",
+    "Corp&Safety": "4",
+    "SmartMfg&Auto": "4",
 }
 
 
