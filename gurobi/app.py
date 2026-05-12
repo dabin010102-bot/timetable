@@ -1974,6 +1974,12 @@ elif menu == "전체 시간표":
         st.session_state.manual_move_history = []
     if "sim_selected_idx" not in st.session_state:
         st.session_state.sim_selected_idx = None
+    if "move_candidates" not in st.session_state:
+        st.session_state["move_candidates"] = []
+    if "move_candidate_reasons" not in st.session_state:
+        st.session_state["move_candidate_reasons"] = {}
+    if "move_candidate_meta" not in st.session_state:
+        st.session_state["move_candidate_meta"] = None
 
     def _apply_manual_moves(df_src: pd.DataFrame) -> pd.DataFrame:
         out = df_src.copy()
@@ -2045,7 +2051,6 @@ elif menu == "전체 시간표":
         selectable_week = selectable_week[selectable_week["과목명"].astype(str) == str(viz_course)]
     selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
-    feasible_rows: list[dict] = []
     sel_idx: int | None = None
     sim_day_no: int | None = None
     sim_start_slot: int | None = None
@@ -2054,7 +2059,7 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        st.caption("이동 후보 계산에서는 최대이동거리 제약(D_max/T_max)을 적용하지 않습니다.")
+        st.caption("후보는 버튼을 눌러 탐색한 결과만 사용합니다.")
         st.caption(
             f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
             f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
@@ -2083,6 +2088,16 @@ elif menu == "전체 시간표":
                 f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
             )
 
+            current_candidate_context = {
+                "sel_idx": int(sel_idx),
+                "week": int(sim_week_num),
+                "mode": str(mode),
+            }
+            if st.session_state.get("move_candidate_meta") != current_candidate_context:
+                st.session_state["move_candidates"] = []
+                st.session_state["move_candidate_reasons"] = {}
+                st.session_state["move_candidate_meta"] = current_candidate_context
+
             dur_slots = max(
                 1,
                 int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
@@ -2091,7 +2106,6 @@ elif menu == "전체 시간표":
             same_base_count = int(
                 exam_df_view["기준과목"].astype(str).apply(normalize_name).eq(constraint_info["base_key"]).sum()
             )
-            feasible_rows = []
             blocked_counts = {
                 "주차 고정 위반": 0,
                 "요일 이동 제한 위반": 0,
@@ -2102,73 +2116,82 @@ elif menu == "전체 시간표":
                 "기타": 0,
             }
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
-            if same_base_count > 1:
-                blocked_counts["같은 과목 분반 연속배정 제약"] = 1
-                st.warning("같은 과목 분반 연속배정 제약 때문에 개별 이동이 제한됩니다.")
-            else:
-                try:
-                    for dnum in [1, 2, 3, 4, 5]:
-                        for st_slot in range(0, max(1, 22 - dur_slots + 1)):
-                            for room in ROOM_ORDER:
-                                if constraint_info["fixed_week"] is not None and int(sim_week_num) != int(constraint_info["fixed_week"]):
-                                    blocked_counts["주차 고정 위반"] += 1
-                                    continue
-                                if constraint_info["orig_day"] is not None and abs(int(dnum) - int(constraint_info["orig_day"])) > D_MAX:
-                                    blocked_counts["요일 이동 제한 위반"] += 1
-                                    continue
-                                if constraint_info["orig_start"] is not None and abs(int(st_slot) - int(constraint_info["orig_start"])) > T_MAX:
-                                    blocked_counts["시간 이동 제한 위반"] += 1
-                                    continue
+            if st.button("후보 탐색", key="search_move_candidates_btn"):
+                feasible_rows: list[dict] = []
+                if same_base_count > 1:
+                    blocked_counts["같은 과목 분반 연속배정 제약"] = 1
+                else:
+                    try:
+                        for dnum in [1, 2, 3, 4, 5]:
+                            for st_slot in range(0, max(1, 22 - dur_slots + 1)):
+                                for room in ROOM_ORDER:
+                                    if constraint_info["fixed_week"] is not None and int(sim_week_num) != int(constraint_info["fixed_week"]):
+                                        blocked_counts["주차 고정 위반"] += 1
+                                        continue
+                                    if constraint_info["orig_day"] is not None and abs(int(dnum) - int(constraint_info["orig_day"])) > D_MAX:
+                                        blocked_counts["요일 이동 제한 위반"] += 1
+                                        continue
+                                    if constraint_info["orig_start"] is not None and abs(int(st_slot) - int(constraint_info["orig_start"])) > T_MAX:
+                                        blocked_counts["시간 이동 제한 위반"] += 1
+                                        continue
 
-                                out_eval = scorer(
-                                    exam_df=exam_df_view,
-                                    target_idx=sel_idx,
-                                    new_week=int(sim_week_num),
-                                    new_day=int(dnum),
-                                    new_start=int(st_slot),
-                                    new_room=int(room),
-                                    student_sets=student_sets,
-                                    summary=summary,
-                                )
-                                if out_eval.get("feasible", False):
-                                    feasible_rows.append(
-                                        {
-                                            "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                            "시작": slot_to_time(st_slot),
-                                            "종료": slot_to_time(st_slot + dur_slots),
-                                            "강의실": int(room),
-                                            "영향학생수": int(out_eval.get("affected_students", 0)),
-                                            "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
-                                            "하루3개증가": int(out_eval.get("daily3_increase", 0)),
-                                            "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                            "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
-                                            "dnum": int(dnum),
-                                            "slot": int(st_slot),
-                                        }
+                                    out_eval = scorer(
+                                        exam_df=exam_df_view,
+                                        target_idx=sel_idx,
+                                        new_week=int(sim_week_num),
+                                        new_day=int(dnum),
+                                        new_start=int(st_slot),
+                                        new_room=int(room),
+                                        student_sets=student_sets,
+                                        summary=summary,
                                     )
-                                else:
-                                    reason = str(out_eval.get("reason", ""))
-                                    if "강의실 중복" in reason:
-                                        blocked_counts["강의실 중복"] += 1
-                                    elif "학생 동시시험" in reason:
-                                        blocked_counts["학생 동시시험"] += 1
+                                    if out_eval.get("feasible", False):
+                                        feasible_rows.append(
+                                            {
+                                                "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                                "시작": slot_to_time(st_slot),
+                                                "종료": slot_to_time(st_slot + dur_slots),
+                                                "강의실": int(room),
+                                                "영향학생수": int(out_eval.get("affected_students", 0)),
+                                                "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                                                "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                                                "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                                                "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
+                                                "dnum": int(dnum),
+                                                "slot": int(st_slot),
+                                            }
+                                        )
                                     else:
-                                        blocked_counts["기타"] += 1
-                except Exception as _calc_err:
-                    st.error(f"후보 계산 중 오류: {_calc_err}")
+                                        reason = str(out_eval.get("reason", ""))
+                                        if "강의실 중복" in reason:
+                                            blocked_counts["강의실 중복"] += 1
+                                        elif "학생 동시시험" in reason:
+                                            blocked_counts["학생 동시시험"] += 1
+                                        else:
+                                            blocked_counts["기타"] += 1
+                    except Exception as _calc_err:
+                        st.error(f"후보 계산 중 오류: {_calc_err}")
 
-            feasible_rows = sorted(
-                feasible_rows,
-                key=lambda x: (x["목적함수변화"], x["학생충돌수"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
-            )
-            st.caption(f"가능 후보 수: {len(feasible_rows)}")
-            if not feasible_rows:
-                st.warning("가능한 이동 후보가 없습니다.")
-                for label, count in blocked_counts.items():
-                    st.write(f"- {label}: {int(count)}개")
-                st.write(f"- 최종 가능 후보: {len(feasible_rows)}개")
+                feasible_rows = sorted(
+                    feasible_rows,
+                    key=lambda x: (x["목적함수변화"], x["학생충돌수"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
+                )
+                st.session_state["move_candidates"] = feasible_rows
+                blocked_counts["최종 가능 후보"] = len(feasible_rows)
+                st.session_state["move_candidate_reasons"] = blocked_counts
+                st.session_state["move_candidate_meta"] = current_candidate_context
+                st.rerun()
+
+            stored_candidates = st.session_state.get("move_candidates", [])
+            stored_reasons = st.session_state.get("move_candidate_reasons", {})
+            st.caption(f"가능 후보 수: {len(stored_candidates)}")
+            if not stored_candidates:
+                if stored_reasons:
+                    st.warning("가능한 이동 후보가 없습니다.")
+                    for label, count in stored_reasons.items():
+                        st.write(f"- {label}: {int(count)}개")
             else:
-                cand_df = pd.DataFrame(feasible_rows)
+                cand_df = pd.DataFrame(stored_candidates)
                 time_opts = (
                     cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
                     .drop_duplicates()
@@ -2243,7 +2266,7 @@ elif menu == "전체 시간표":
         if st.button(
             "변경 완료",
             key="apply_move_btn",
-            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room is None or not feasible_rows,
+            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room is None or not st.session_state.get("move_candidates", []),
         ):
             prev_state = st.session_state.manual_moves.get(str(sel_idx))
             st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
