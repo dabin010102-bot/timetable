@@ -378,6 +378,26 @@ COURSE_GRADE_FALLBACK = {
     "SmartMfg&Auto": "3",
 }
 
+FIXED_WEEK_BY_BASE = {
+    "ProdControl": 7,
+    "Corp&Safety": 8,
+    "Calculus(1)": 8,
+    "ReinforcLearn": 8,
+    "Det.ManageSci": 8,
+    "SmartLogistics": 8,
+    "Ergonomics": 8,
+    "Database": 8,
+    "IntroFinEng": 8,
+    "ProdDevProcess": 8,
+    "GenAIApps": 8,
+    "SmartMfg&Auto": 8,
+    "IntroIE&M": 9,
+    "Optim&Apps": 9,
+    "Prob&Stats(1)": 9,
+    "DataMining": 9,
+    "QualityEng": 9,
+}
+
 
 # -------------------------------------------------
 # 유틸
@@ -1476,6 +1496,62 @@ def fill_missing_grade(df: pd.DataFrame, grade_map: dict[str, str]) -> pd.DataFr
     return out
 
 
+def ensure_normalized_grade_column(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    raw_grades = []
+    norm_grades = []
+    for _, row in out.iterrows():
+        raw_grade = row.get("학년", "-")
+        norm_grade = normalize_grade_value(raw_grade)
+        if norm_grade == "-":
+            norm_grade = normalize_grade_value(fallback_grade_for_course(row.get("과목", "")))
+        raw_grades.append(raw_grade if normalize_grade_value(raw_grade) != "-" else norm_grade)
+        norm_grades.append(norm_grade)
+    out["학년"] = raw_grades
+    out["학년정규화"] = norm_grades
+    return out
+
+
+def get_exam_original_constraint_info(row: pd.Series, orig_maps: dict[str, dict]) -> dict:
+    exact_key = normalize_exact(row.get("과목", ""))
+    base_key = normalize_name(row.get("기준과목", row.get("과목", "")))
+    exact_meta = orig_maps.get("exact", {}).get(exact_key, {})
+    base_meta = orig_maps.get("base", {}).get(base_key, {})
+
+    exact_weekslots = sorted(list(exact_meta.get("weekslots", set())))
+    base_weekslots = sorted(list(base_meta.get("weekslots", set())))
+    exact_slots = sorted(list(exact_meta.get("slots", set())))
+    base_slots = sorted(list(base_meta.get("slots", set())))
+
+    orig_week = None
+    orig_day = None
+    orig_start = None
+    if exact_weekslots:
+        orig_week, orig_day, orig_start = exact_weekslots[0]
+    elif base_weekslots:
+        orig_week, orig_day, orig_start = base_weekslots[0]
+    elif exact_slots:
+        orig_day, orig_start = exact_slots[0]
+    elif base_slots:
+        orig_day, orig_start = base_slots[0]
+
+    fixed_week = None
+    base_text = str(row.get("기준과목", row.get("과목", ""))).strip()
+    if base_text in FIXED_WEEK_BY_BASE:
+        fixed_week = int(FIXED_WEEK_BY_BASE[base_text])
+
+    if orig_week is None and fixed_week is not None:
+        orig_week = fixed_week
+
+    return {
+        "base_key": base_key,
+        "orig_week": orig_week,
+        "orig_day": orig_day,
+        "orig_start": orig_start,
+        "fixed_week": fixed_week,
+    }
+
+
 def dataframe_to_html_table(df: pd.DataFrame, highlight_cols: list[str] | None = None) -> str:
     highlight_cols = highlight_cols or []
     parts = ["<div class='result-table-wrap'><table class='result-table'><thead><tr>"]
@@ -1920,8 +1996,7 @@ elif menu == "전체 시간표":
             out.loc[mask, "강의실목록"] = [[int(mv["room"])] for _ in range(int(mask.sum()))]
         return out
 
-    exam_df_view = _apply_manual_moves(exam_df)
-    exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
+    exam_df_view = ensure_normalized_grade_column(_apply_manual_moves(exam_df))
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -2012,51 +2087,75 @@ elif menu == "전체 시간표":
                 1,
                 int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
             )
+            constraint_info = get_exam_original_constraint_info(sel_row, orig_maps)
+            same_base_count = int(
+                exam_df_view["기준과목"].astype(str).apply(normalize_name).eq(constraint_info["base_key"]).sum()
+            )
             feasible_rows = []
-            blocked_room = 0
-            blocked_student = 0
-            blocked_other = 0
+            blocked_counts = {
+                "주차 고정 위반": 0,
+                "요일 이동 제한 위반": 0,
+                "시간 이동 제한 위반": 0,
+                "강의실 중복": 0,
+                "학생 동시시험": 0,
+                "같은 과목 분반 연속배정 제약": 0,
+                "기타": 0,
+            }
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
-            try:
-                for dnum in [1, 2, 3, 4, 5]:
-                    for st_slot in range(0, max(1, 22 - dur_slots + 1)):
-                        for room in ROOM_ORDER:
-                            out_eval = scorer(
-                                exam_df=exam_df_view,
-                                target_idx=sel_idx,
-                                new_week=int(sim_week_num),
-                                new_day=int(dnum),
-                                new_start=int(st_slot),
-                                new_room=int(room),
-                                student_sets=student_sets,
-                                summary=summary,
-                            )
-                            if out_eval.get("feasible", False):
-                                feasible_rows.append(
-                                    {
-                                        "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                        "시작": slot_to_time(st_slot),
-                                        "종료": slot_to_time(st_slot + dur_slots),
-                                        "강의실": int(room),
-                                        "영향학생수": int(out_eval.get("affected_students", 0)),
-                                        "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
-                                        "하루3개증가": int(out_eval.get("daily3_increase", 0)),
-                                        "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                        "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
-                                        "dnum": int(dnum),
-                                        "slot": int(st_slot),
-                                    }
+            if same_base_count > 1:
+                blocked_counts["같은 과목 분반 연속배정 제약"] = 1
+                st.warning("같은 과목 분반 연속배정 제약 때문에 개별 이동이 제한됩니다.")
+            else:
+                try:
+                    for dnum in [1, 2, 3, 4, 5]:
+                        for st_slot in range(0, max(1, 22 - dur_slots + 1)):
+                            for room in ROOM_ORDER:
+                                if constraint_info["fixed_week"] is not None and int(sim_week_num) != int(constraint_info["fixed_week"]):
+                                    blocked_counts["주차 고정 위반"] += 1
+                                    continue
+                                if constraint_info["orig_day"] is not None and abs(int(dnum) - int(constraint_info["orig_day"])) > D_MAX:
+                                    blocked_counts["요일 이동 제한 위반"] += 1
+                                    continue
+                                if constraint_info["orig_start"] is not None and abs(int(st_slot) - int(constraint_info["orig_start"])) > T_MAX:
+                                    blocked_counts["시간 이동 제한 위반"] += 1
+                                    continue
+
+                                out_eval = scorer(
+                                    exam_df=exam_df_view,
+                                    target_idx=sel_idx,
+                                    new_week=int(sim_week_num),
+                                    new_day=int(dnum),
+                                    new_start=int(st_slot),
+                                    new_room=int(room),
+                                    student_sets=student_sets,
+                                    summary=summary,
                                 )
-                            else:
-                                reason = str(out_eval.get("reason", ""))
-                                if "강의실 중복" in reason:
-                                    blocked_room += 1
-                                elif "학생 동시시험" in reason:
-                                    blocked_student += 1
+                                if out_eval.get("feasible", False):
+                                    feasible_rows.append(
+                                        {
+                                            "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                            "시작": slot_to_time(st_slot),
+                                            "종료": slot_to_time(st_slot + dur_slots),
+                                            "강의실": int(room),
+                                            "영향학생수": int(out_eval.get("affected_students", 0)),
+                                            "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                                            "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                                            "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                                            "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
+                                            "dnum": int(dnum),
+                                            "slot": int(st_slot),
+                                        }
+                                    )
                                 else:
-                                    blocked_other += 1
-            except Exception as _calc_err:
-                st.error(f"후보 계산 중 오류: {_calc_err}")
+                                    reason = str(out_eval.get("reason", ""))
+                                    if "강의실 중복" in reason:
+                                        blocked_counts["강의실 중복"] += 1
+                                    elif "학생 동시시험" in reason:
+                                        blocked_counts["학생 동시시험"] += 1
+                                    else:
+                                        blocked_counts["기타"] += 1
+                except Exception as _calc_err:
+                    st.error(f"후보 계산 중 오류: {_calc_err}")
 
             feasible_rows = sorted(
                 feasible_rows,
@@ -2064,16 +2163,10 @@ elif menu == "전체 시간표":
             )
             st.caption(f"가능 후보 수: {len(feasible_rows)}")
             if not feasible_rows:
-                reason_lines = []
-                if blocked_room > 0 and blocked_student == 0:
-                    reason_lines.append("강의실 중복 때문에 가능한 후보가 없습니다.")
-                if blocked_student > 0 and blocked_room == 0:
-                    reason_lines.append("학생 동시시험 제약 때문에 가능한 후보가 없습니다.")
-                if blocked_room > 0 and blocked_student > 0:
-                    reason_lines.append("강의실 중복과 학생 동시시험 제약 때문에 가능한 후보가 없습니다.")
-                if blocked_other > 0:
-                    reason_lines.append("현재 조건이 너무 엄격합니다.")
-                st.warning(" ".join(reason_lines) if reason_lines else "현재 조건에서 가능한 후보가 없습니다.")
+                st.warning("가능한 이동 후보가 없습니다.")
+                for label, count in blocked_counts.items():
+                    st.write(f"- {label}: {int(count)}개")
+                st.write(f"- 최종 가능 후보: {len(feasible_rows)}개")
             else:
                 cand_df = pd.DataFrame(feasible_rows)
                 time_opts = (
