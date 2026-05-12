@@ -2058,13 +2058,28 @@ elif menu == "전체 시간표":
                 1,
                 int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
             )
+            target_row = exam_df_view[exam_df_view["시험인덱스"] == sel_idx].copy()
+            if target_row.empty:
+                st.warning("선택한 과목의 원본 행을 찾지 못했습니다.")
+            selected_base_key = normalize_name(sel_row.get("기준과목", sel_row.get("과목", "")))
+            group_df = exam_df_view[
+                exam_df_view["기준과목"].astype(str).apply(normalize_name) == selected_base_key
+            ].copy()
+            group_count = len(group_df)
+            is_bundle = group_count >= 2
             enrollment = len(student_sets.get(int(sel_idx), set()))
             need_room = max(1, len(sel_row["강의실목록"]))
-            allowed_weeks = [int(sim_week_num)]
+            weeks_to_search = [int(sim_week_num)]
             if "fixed_week" in sel_row and pd.notna(sel_row.get("fixed_week")):
-                allowed_weeks = [int(sel_row["fixed_week"])]
+                weeks_to_search = [int(sel_row["fixed_week"])]
             elif "주차" in sel_row:
-                allowed_weeks = [int(sel_row["주차"])]
+                weeks_to_search = [int(sel_row["주차"])]
+            if not weeks_to_search:
+                weeks_to_search = [int(sel_row["주차"])]
+
+            start_slots_to_search = list(range(0, 19))
+            if not start_slots_to_search:
+                start_slots_to_search = list(range(0, 19))
 
             room_combo_candidates = []
             for combo in combinations(ROOM_ORDER, need_room):
@@ -2072,7 +2087,8 @@ elif menu == "전체 시간표":
                 if total_cap >= enrollment:
                     room_combo_candidates.append(tuple(int(r) for r in combo))
             if not room_combo_candidates:
-                room_combo_candidates = [tuple(int(r) for r in sel_row["강의실목록"])]
+                current_room_count = max(1, len(sel_row["강의실목록"]))
+                room_combo_candidates = [tuple(int(r) for r in combo) for combo in combinations(ROOM_ORDER, current_room_count)]
 
             debug_counts = {
                 "need_room_mismatch": 0,
@@ -2082,19 +2098,29 @@ elif menu == "전체 시간표":
                 "section_consecutive_fail": 0,
                 "fixed_week_fail": 0,
                 "feasible_count": 0,
+                "selected_exam_idx": int(sel_idx),
+                "target_row_empty": bool(target_row.empty),
+                "selected_base_key": selected_base_key,
+                "group_row_count": int(group_count),
+                "is_bundle": bool(is_bundle),
+                "weeks_to_search": weeks_to_search,
+                "start_slots_to_search_count": len(start_slots_to_search),
+                "room_combos_count": len(room_combo_candidates),
+                "raw_candidate_count": 0,
             }
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
                 try:
-                    if same_base_count > 1:
+                    if is_bundle:
                         debug_counts["section_consecutive_fail"] += 1
-                    for week in allowed_weeks:
+                    for week in weeks_to_search:
                         for dnum in [1, 2, 3, 4, 5]:
-                            for st_slot in range(0, 19):
+                            for st_slot in start_slots_to_search:
                                 if st_slot + dur_slots > 22:
                                     continue
                                 for room_combo in room_combo_candidates:
+                                    debug_counts["raw_candidate_count"] += 1
                                     if len(room_combo) != need_room:
                                         debug_counts["need_room_mismatch"] += 1
                                         continue
