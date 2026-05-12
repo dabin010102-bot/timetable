@@ -2093,29 +2093,23 @@ elif menu == "전체 시간표":
         course_options = ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist())
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
+    sim_week_num = int(str(sim_week_view).replace("주차", ""))
+    active_week_num = sim_week_num
+    active_room = int(viz_room)
     if viz_course != "전체":
         focus_df = course_src[course_src["과목명"].astype(str) == str(viz_course)].copy()
         if not focus_df.empty:
             focus_df = focus_df.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
             focus_row = focus_df.iloc[0]
-            target_week_label = f"{int(focus_row['주차'])}주차"
-            target_room_label = str(normalize_room_choice(focus_row["강의실목록"])[0])
-            focus_sig = f"{viz_grade}|{viz_course}"
-            if st.session_state.get("overall_course_focus_sig") != focus_sig:
-                st.session_state["overall_course_focus_sig"] = focus_sig
-                st.session_state["sim_week_view"] = target_week_label
-                st.session_state["overall_viz_room"] = target_room_label
-                st.rerun()
-    else:
-        st.session_state["overall_course_focus_sig"] = "전체"
+            active_week_num = int(focus_row["주차"])
+            active_room = int(normalize_room_choice(focus_row["강의실목록"])[0])
 
-    sim_week_num = int(str(sim_week_view).replace("주차", ""))
     current_filter_sig = f"{sim_week_num}|{viz_room}|{viz_grade}|{viz_course}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
         st.session_state.sim_filter_sig = current_filter_sig
         st.session_state.sim_selected_idx = None
     calendar_src = exam_df_view.copy()
-    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
+    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(active_room) in set(xs))]
     if viz_grade != "전체":
         calendar_src = calendar_src[calendar_src["학년정규화"] == target_grade]
     if viz_course != "전체":
@@ -2126,15 +2120,15 @@ elif menu == "전체 시간표":
     with left_col:
         st.markdown("##### 현재 전체 시간표")
         # 시간표는 한 개만 보여준다.
-        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=False), unsafe_allow_html=True)
+        st.markdown(build_calendar_html(calendar_src, active_week_num, clickable=False), unsafe_allow_html=True)
         with st.expander("참고용 이미지 보기", expanded=False):
-            selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
+            selected_room_path_overall = report_dir / f"page_room_{active_room}.png" if report_dir is not None else None
             if selected_room_path_overall is not None and selected_room_path_overall.exists():
                 st.image(str(selected_room_path_overall), use_container_width=True)
-                st.caption(f"강의실 {viz_room} 시각화 파일")
+                st.caption(f"강의실 {active_room} 시각화 파일")
 
-    visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-    selectable_week = exam_df_view[exam_df_view["주차"] == sim_week_num].copy()
+    visible_week = calendar_src[calendar_src["주차"] == active_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    selectable_week = exam_df_view[exam_df_view["주차"] == active_week_num].copy()
     if viz_grade != "전체":
         selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
     if viz_course != "전체":
@@ -2473,11 +2467,11 @@ elif menu == "전체 시간표":
                 mime="text/csv",
             )
 
-    st.markdown("#### 현재 필터 시험 상세 표")
+    st.markdown("#### 전체 시험 상세 표")
     whole_table_cols = [
         "과목명", "학년", "주차", "요일", "날짜", "시작", "종료", "시험시간(분)", "강의실",
     ]
-    whole_table_df = calendar_src.copy()
+    whole_table_df = exam_df_view.copy()
     for col in whole_table_cols:
         if col not in whole_table_df.columns:
             whole_table_df[col] = "-"
