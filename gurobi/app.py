@@ -290,6 +290,50 @@ st.markdown(
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
     .result-table th {background:#eaf2ff; font-weight:800;}
     .result-table td.change {background:#ffe3e3; color:#7f1d1d !important; font-weight:800;}
+    .candidate-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      background: #ffffff;
+      padding: 14px 16px;
+      margin: 8px 0 12px 0;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+    .candidate-card-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #475569 !important;
+      margin-bottom: 8px;
+    }
+    .candidate-card-main {
+      font-size: 22px;
+      font-weight: 900;
+      color: #0f172a !important;
+      line-height: 1.25;
+    }
+    .candidate-card-sub {
+      margin-top: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3a8a !important;
+    }
+    .warn-badge-row {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin:8px 0 10px 0;
+    }
+    .warn-badge {
+      display:inline-block;
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:12px;
+      font-weight:800;
+      line-height:1.2;
+    }
+    .warn-green {background:#dcfce7; color:#166534 !important; border:1px solid #86efac;}
+    .warn-yellow {background:#fef3c7; color:#92400e !important; border:1px solid #fcd34d;}
+    .warn-orange {background:#ffedd5; color:#9a3412 !important; border:1px solid #fdba74;}
+    .warn-red {background:#fee2e2; color:#991b1b !important; border:1px solid #fca5a5;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -2125,15 +2169,6 @@ elif menu == "전체 시간표":
             scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
-                pre_debug = {
-                    "selected_exam_idx": int(sel_idx),
-                    "target_row_empty": bool(target_row.empty),
-                    "group_count": int(group_count),
-                    "weeks_to_search": weeks_to_search,
-                    "start_slots_count": len(start_slots_to_search),
-                    "room_combos_count": len(room_combo_candidates),
-                }
-                st.json(pre_debug)
                 try:
                     if is_bundle:
                         debug_counts["section_consecutive_fail"] += 1
@@ -2225,21 +2260,28 @@ elif menu == "전체 시간표":
             stored_candidates = st.session_state.get("move_candidates", [])
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
-            if stored_reasons:
-                st.json(stored_reasons)
             if not stored_candidates:
                 if stored_reasons:
-                    st.warning("가능한 이동 후보가 없습니다.")
+                    st.info("현재 제약 조건에서 가능한 이동 후보가 없습니다.")
             else:
                 cand_df = pd.DataFrame(stored_candidates)
-                time_opts = (
-                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
-                    .drop_duplicates()
-                    .tolist()
+                cand_df["warning_count"] = cand_df["경고"].apply(lambda x: 0 if str(x).strip() == "-" else len([p for p in str(x).split(",") if p.strip()]))
+                time_summary = (
+                    cand_df.groupby(["요일", "시작", "종료"], as_index=False)["warning_count"]
+                    .min()
+                    .sort_values(["요일", "시작"])
                 )
+                time_summary["time_label"] = time_summary.apply(
+                    lambda r: f"{r['요일']} {r['시작']}~{r['종료']} (경고 {int(r['warning_count'])}개)",
+                    axis=1,
+                )
+                time_opts = time_summary["time_label"].tolist()
                 tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                selected_time_row = time_summary[time_summary["time_label"] == tsel].iloc[0]
                 cand_time_df = cand_df[
-                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}" == tsel, axis=1)
+                    (cand_df["요일"] == selected_time_row["요일"])
+                    & (cand_df["시작"] == selected_time_row["시작"])
+                    & (cand_df["종료"] == selected_time_row["종료"])
                 ].copy()
                 room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
                 rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
@@ -2262,22 +2304,40 @@ elif menu == "전체 시간표":
                 sim_room_choice = list(chosen_row["room_combo"])
 
                 st.markdown("#### 선택 후보 요약")
-                st.write(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
-                st.write(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
-                st.write(f"영향학생 수: {int(out.get('affected_students', 0))}명")
-                st.write(f"학생충돌 수: {int(out.get('student_conflict_count', 0))}명")
-                st.write(f"하루 3시험 증가: {int(out.get('daily3_increase', 0)):+d}")
-                st.write(f"하루 4시험 증가: {int(out.get('daily4_increase', 0)):+d}")
-                st.write(f"시간 변경 여부: {'예' if int(out.get('time_move_delta', 0)) != 0 else '아니오'}")
-                st.write(f"강의실 변경 여부: {'예' if int(out.get('room_change_delta', 0)) != 0 else '아니오'}")
-                st.write(f"목적함수 변화량: {float(out.get('objective_delta', 0.0)):+.4f}")
-                st.write(f"경고 항목: {chosen_row['경고']}")
+                st.markdown(
+                    (
+                        "<div class='candidate-card'>"
+                        "<div class='candidate-card-title'>가능 후보</div>"
+                        f"<div class='candidate-card-main'>{tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)}</div>"
+                        f"<div class='candidate-card-sub'>강의실: {chosen_row['강의실']}</div>"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+                student_conflict = int(out.get("student_conflict_count", 0))
+                time_changed = int(out.get("time_move_delta", 0)) != 0
+                room_changed = int(out.get("room_change_delta", 0)) != 0
+                daily_inc = int(out.get("daily3_increase", 0)) > 0 or int(out.get("daily4_increase", 0)) > 0
+                dmax_tmax_warn = "D_MAX 초과" in str(chosen_row["경고"]) or "T_MAX 초과" in str(chosen_row["경고"])
+                obj_delta = float(out.get("objective_delta", 0.0))
+                badge_parts = [
+                    ("warn-green" if student_conflict == 0 else "warn-red", f"학생 충돌 {'없음' if student_conflict == 0 else f'{student_conflict}명'}"),
+                    ("warn-yellow" if room_changed else "warn-green", f"강의실 변경 {'발생' if room_changed else '없음'}"),
+                    ("warn-yellow" if time_changed else "warn-green", f"시간 변경 {'발생' if time_changed else '없음'}"),
+                    ("warn-red" if daily_inc else "warn-green", f"하루 시험 수 증가 {'있음' if daily_inc else '없음'}"),
+                    ("warn-orange" if dmax_tmax_warn else "warn-green", f"D_MAX/T_MAX {'초과' if dmax_tmax_warn else '정상'}"),
+                    ("warn-yellow" if obj_delta > 0 else "warn-green", f"목적함수 {obj_delta:+.4f}"),
+                ]
+                badge_html = "".join([f"<span class='warn-badge {cls}'>{label}</span>" for cls, label in badge_parts])
+                st.markdown(f"<div class='warn-badge-row'>{badge_html}</div>", unsafe_allow_html=True)
+                st.info(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
+                st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
 
                 st.markdown("#### 추천 후보 TOP3")
                 top3 = cand_df.head(3)
                 for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
                     st.write(
-                        f"{rank}순위: {rr['요일']} {rr['시작']} / {int(rr['강의실'])}호 | "
+                        f"{rank}순위: {rr['요일']} {rr['시작']} / {rr['강의실']}호 | "
                         f"Δ {float(rr['목적함수변화']):+.2f} | 학생충돌 {int(rr['학생충돌수'])}명"
                     )
 
@@ -2308,6 +2368,7 @@ elif menu == "전체 시간표":
             "변경 완료",
             key="apply_move_btn",
             disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or not st.session_state.get("move_candidates", []),
+            type="primary",
         ):
             prev_state = st.session_state.manual_moves.get(str(sel_idx))
             st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
@@ -2319,7 +2380,7 @@ elif menu == "전체 시간표":
             }
             st.rerun()
     with button_row[1]:
-        if st.button("이전", key="undo_last_move_btn"):
+        if st.button("이전", key="undo_last_move_btn", type="secondary"):
             if st.session_state.manual_move_history:
                 item = st.session_state.manual_move_history.pop()
                 idx_key = str(item["idx"])
@@ -2330,7 +2391,7 @@ elif menu == "전체 시간표":
                     st.session_state.manual_moves[idx_key] = prev
                 st.rerun()
     with button_row[2]:
-        if st.button("초기화", key="reset_to_gurobi_btn"):
+        if st.button("초기화", key="reset_to_gurobi_btn", type="secondary"):
             st.session_state.manual_moves = {}
             st.session_state.manual_move_history = []
             st.session_state.sim_selected_idx = None
