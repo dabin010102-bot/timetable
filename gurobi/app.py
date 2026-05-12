@@ -150,22 +150,24 @@ st.markdown(
     .calendar-wrap .course {font-weight:900; margin-bottom:3px; font-size:13px; color:#0b1220 !important; text-align:center;}
     .calendar-wrap .empty {background:#ffffff;}
     .calendar-wrap .exam-block {
-      display:block;
+      display:flex !important;
       min-height:58px;
       background:#bfdbfe;
       border:1px solid #60a5fa;
       border-radius:7px;
-      padding:5px 6px;
-      line-height:1.22;
+      padding:6px 8px;
+      line-height:1.25;
       white-space:normal;
       word-break:keep-all;
       overflow-wrap:anywhere;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
-      display:flex !important;
       flex-direction:column;
       justify-content:center !important;
       align-items:center !important;
       text-align:center !important;
+      width:100%;
+      height:100%;
+      box-sizing:border-box;
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
@@ -191,6 +193,7 @@ st.markdown(
       font-weight:800;
       font-size:12px;
       text-align:center;
+      width:100%;
     }
     .calendar-wrap .cont {
       min-height:58px;
@@ -1928,27 +1931,6 @@ elif menu == "전체 시간표":
         calendar_src = calendar_src[calendar_src["과목명"].astype(str) == str(viz_course)]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
-    ctl1, ctl2 = st.columns([1, 1])
-    with ctl1:
-        if st.button("초기화(구로비 원본)", key="reset_to_gurobi_btn"):
-            st.session_state.manual_moves = {}
-            st.session_state.manual_move_history = []
-            st.session_state.sim_selected_idx = None
-            st.rerun()
-    with ctl2:
-        if st.button("이전(방금 작업 취소)", key="undo_last_move_btn"):
-            if st.session_state.manual_move_history:
-                item = st.session_state.manual_move_history.pop()
-                idx_key = str(item["idx"])
-                prev = item["prev"]
-                if prev is None:
-                    st.session_state.manual_moves.pop(idx_key, None)
-                else:
-                    st.session_state.manual_moves[idx_key] = prev
-                st.rerun()
-            else:
-                st.info("되돌릴 작업이 없습니다.")
-
     left_col, right_col = st.columns([8, 4])
     with left_col:
         st.markdown("##### 현재 전체 시간표")
@@ -2023,12 +2005,6 @@ elif menu == "전체 시간표":
                             }
                         )
 
-            # 드롭다운은 계산과 무관하게 항상 먼저 노출한다.
-            base_time_opts = sorted({f"{r['요일']} {r['시작']}~{r['종료']}" for r in raw_rows})
-            base_room_opts = sorted({str(int(r["강의실"])) for r in raw_rows}, key=lambda x: int(x))
-            tsel = st.selectbox("가능한 시간", base_time_opts, key="sim_time_filter")
-            rsel = st.selectbox("가능한 강의실", base_room_opts, key="sim_room_filter_by_time")
-
             feasible_rows = []
             blocked_room = 0
             blocked_student = 0
@@ -2052,14 +2028,16 @@ elif menu == "전체 시간표":
                                 "요일": rr["요일"],
                                 "시작": rr["시작"],
                                 "종료": rr["종료"],
-                                "강의실": rr["강의실"],
-                                "영향학생수": int(out_eval.get("affected_students", 0)),
-                                "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
-                                "하루3개증가": int(out_eval.get("daily3_increase", 0)),
-                                "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
-                            }
-                        )
+                            "강의실": rr["강의실"],
+                            "영향학생수": int(out_eval.get("affected_students", 0)),
+                            "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                            "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                            "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                            "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
+                            "dnum": rr["dnum"],
+                            "slot": rr["slot"],
+                        }
+                    )
                     else:
                         reason = str(out_eval.get("reason", ""))
                         if "강의실 중복" in reason:
@@ -2072,14 +2050,29 @@ elif menu == "전체 시간표":
                 st.error(f"후보 계산 중 오류: {_calc_err}")
             st.caption(f"가능 후보 수: {len(feasible_rows)}")
             if not feasible_rows:
-                st.warning(
-                    f"엄격 후보 0개: 강의실중복 차단 {blocked_room}건, 학생동시시험 차단 {blocked_student}건, 기타 {blocked_other}건. "
-                    "현재 조건이 너무 엄격합니다."
-                )
+                reason_lines = []
+                if blocked_room > 0 and blocked_student == 0:
+                    reason_lines.append("강의실 중복 때문에 가능한 후보가 없습니다.")
+                if blocked_student > 0 and blocked_room == 0:
+                    reason_lines.append("학생 동시시험 제약 때문에 가능한 후보가 없습니다.")
+                if blocked_room > 0 and blocked_student > 0:
+                    reason_lines.append("강의실 중복과 학생 동시시험 제약 때문에 가능한 후보가 없습니다.")
+                if blocked_other > 0:
+                    reason_lines.append("현재 조건이 너무 엄격합니다.")
+                st.warning(" ".join(reason_lines) if reason_lines else "현재 조건에서 가능한 후보가 없습니다.")
             else:
                 cand_df = pd.DataFrame(feasible_rows).sort_values(
                     ["목적함수변화", "학생충돌수", "하루4개증가", "하루3개증가"]
                 ).reset_index(drop=True)
+                time_opts = cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1).drop_duplicates().tolist()
+                tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                cand_time_df = cand_df[
+                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}" == tsel, axis=1)
+                ].copy()
+                room_opts = cand_time_df["강의실"].astype(int).astype(str).drop_duplicates().tolist()
+                rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
+                cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(int).astype(str) == str(rsel)].copy()
+                chosen_row = cand_choice_df.iloc[0]
                 st.dataframe(
                     cand_df[["요일", "시작", "종료", "강의실", "영향학생수", "학생충돌수", "하루3개증가", "하루4개증가", "목적함수변화"]],
                     use_container_width=True,
@@ -2090,27 +2083,23 @@ elif menu == "전체 시간표":
                 for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
                     st.write(f"{rank}순위: {rr['요일']} {rr['시작']} / {int(rr['강의실'])}호 | Δ {float(rr['목적함수변화']):+.2f} | 학생충돌 {int(rr['학생충돌수'])}명")
 
-            # 사용자가 고른 시간/강의실 조합을 즉시 평가한다.
-            tday = str(tsel).split(" ")[0]
-            trange = str(tsel).split(" ")[1]
-            tstart = trange.split("~")[0]
-            sim_day_no = DAY_KO_TO_NUM.get(tday, 1)
-            sim_start_slot = int((int(str(tstart).split(":")[0]) * 60 + int(str(tstart).split(":")[1]) - 540) / 30)
-            sim_room = int(rsel)
-            out = score_move_impact(
-                exam_df=exam_df_view,
-                target_idx=sel_idx,
-                new_week=int(sim_week_num),
-                new_day=int(sim_day_no),
-                new_start=int(sim_start_slot),
-                new_room=int(sim_room),
-                student_sets=student_sets,
-                summary=summary,
-            )
-            st.caption(f"선택 이동안: {tday} {tstart} / {sim_room}호")
-            if not out.get("feasible", False):
-                st.warning(f"선택 조합은 엄격 제약에서 불가: {out.get('reason', '사유 없음')}")
-            else:
+                scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
+                out = scorer(
+                    exam_df=exam_df_view,
+                    target_idx=sel_idx,
+                    new_week=int(sim_week_num),
+                    new_day=int(chosen_row["dnum"]),
+                    new_start=int(chosen_row["slot"]),
+                    new_room=int(chosen_row["강의실"]),
+                    student_sets=student_sets,
+                    summary=summary,
+                )
+                tday = str(chosen_row["요일"])
+                tstart = str(chosen_row["시작"])
+                sim_day_no = int(chosen_row["dnum"])
+                sim_start_slot = int(chosen_row["slot"])
+                sim_room = int(chosen_row["강의실"])
+                st.caption(f"선택 이동안: {tday} {tstart} / {sim_room}호")
                 st.markdown("#### 영향 요약")
                 st.write(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
                 st.write(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {sim_room}")
@@ -2119,18 +2108,38 @@ elif menu == "전체 시간표":
                 st.write(f"목적함수 변화: {float(out.get('objective_delta', 0.0)):+.4f}")
                 st.write(f"시간이동 변화: {int(out.get('time_move_delta', 0)):+d}")
                 st.write(f"강의실변경 변화: {int(out.get('room_change_delta', 0)):+d}")
-
-            if st.button("이동 반영", key="apply_move_btn", disabled=not out.get("feasible", False)):
-                prev_state = st.session_state.manual_moves.get(str(sel_idx))
-                st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
-                st.session_state.manual_moves[str(sel_idx)] = {
-                    "week": int(sim_week_num),
-                    "day": int(sim_day_no),
-                    "start_slot": int(sim_start_slot),
-                    "room": int(sim_room),
-                }
-                st.success("이동 반영 완료")
-                st.rerun()
+                btn1, btn2, btn3 = st.columns(3)
+                with btn1:
+                    if st.button("변경 완료", key="apply_move_btn"):
+                        prev_state = st.session_state.manual_moves.get(str(sel_idx))
+                        st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
+                        st.session_state.manual_moves[str(sel_idx)] = {
+                            "week": int(sim_week_num),
+                            "day": int(sim_day_no),
+                            "start_slot": int(sim_start_slot),
+                            "room": int(sim_room),
+                        }
+                        st.success("변경 반영 완료")
+                        st.rerun()
+                with btn2:
+                    if st.button("이전", key="undo_last_move_btn"):
+                        if st.session_state.manual_move_history:
+                            item = st.session_state.manual_move_history.pop()
+                            idx_key = str(item["idx"])
+                            prev = item["prev"]
+                            if prev is None:
+                                st.session_state.manual_moves.pop(idx_key, None)
+                            else:
+                                st.session_state.manual_moves[idx_key] = prev
+                            st.rerun()
+                        else:
+                            st.info("되돌릴 작업이 없습니다.")
+                with btn3:
+                    if st.button("초기화", key="reset_to_gurobi_btn"):
+                        st.session_state.manual_moves = {}
+                        st.session_state.manual_move_history = []
+                        st.session_state.sim_selected_idx = None
+                        st.rerun()
         if st.session_state.manual_moves:
             rows = []
             for k, mv in st.session_state.manual_moves.items():
