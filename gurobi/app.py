@@ -363,6 +363,106 @@ st.markdown(
       color:#334155 !important;
       line-height:1.2;
     }
+    .overall-abs-wrap {
+      overflow-x:auto;
+      padding-bottom:10px;
+      margin-top:8px;
+    }
+    .overall-abs-shell {
+      min-width:1260px;
+      border:1px solid #d8e0ea;
+      border-radius:14px;
+      background:#ffffff;
+      overflow:hidden;
+    }
+    .overall-abs-header {
+      display:grid;
+      grid-template-columns: 86px repeat(5, minmax(220px, 1fr));
+      background:#eaf2ff;
+      border-bottom:1px solid #d8e0ea;
+    }
+    .overall-abs-head {
+      padding:12px 8px;
+      text-align:center;
+      font-size:14px;
+      font-weight:900;
+      color:#0b1220 !important;
+      border-right:1px solid #d8e0ea;
+      line-height:1.25;
+    }
+    .overall-abs-head:last-child {
+      border-right:none;
+    }
+    .overall-abs-body {
+      display:grid;
+      grid-template-columns: 86px repeat(5, minmax(220px, 1fr));
+      align-items:stretch;
+    }
+    .overall-abs-time-axis {
+      position:relative;
+      background:#f8fbff;
+      border-right:1px solid #d8e0ea;
+    }
+    .overall-abs-time-label {
+      position:absolute;
+      left:0;
+      width:100%;
+      transform:translateY(-50%);
+      text-align:center;
+      font-size:12px;
+      font-weight:800;
+      color:#334155 !important;
+    }
+    .overall-abs-day-col {
+      position:relative;
+      border-right:1px solid #e2e8f0;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          #ffffff 0,
+          #ffffff 59px,
+          #edf2f7 59px,
+          #edf2f7 60px
+        );
+      overflow:hidden;
+    }
+    .overall-abs-day-col:last-child {
+      border-right:none;
+    }
+    .overall-abs-event {
+      position:absolute;
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid rgba(15,23,42,.10);
+      box-sizing:border-box;
+      overflow:hidden;
+      max-width:100%;
+      line-height:1.2;
+      box-shadow:0 3px 10px rgba(15,23,42,.08);
+      z-index:1;
+    }
+    .overall-abs-title {
+      font-size:12px;
+      font-weight:900;
+      color:#0b1220 !important;
+      word-break:keep-all;
+      overflow-wrap:anywhere;
+      display:-webkit-box;
+      -webkit-line-clamp:3;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    .overall-abs-sub {
+      margin-top:4px;
+      font-size:11px;
+      font-weight:700;
+      color:#334155 !important;
+      word-break:keep-all;
+      overflow-wrap:anywhere;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1625,17 +1725,25 @@ def overall_calendar_grade_class(value) -> str:
 
 
 def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
-    slots = list(range(0, 22))
+    slot_height = 60
+    slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
         return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
-    start_map: dict[tuple[int, str], list[dict]] = {}
-    for _, r in df_w.sort_values(["요일번호", "시작슬롯", "과목명"]).iterrows():
+    df_w = df_w[df_w["요일번호"].isin([1, 2, 3, 4, 5])].copy()
+    if df_w.empty:
+        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 평일 시험이 없습니다.</div></div>"
+    df_w["표시종료슬롯"] = pd.to_numeric(df_w["표시종료슬롯"], errors="coerce").fillna(df_w["종료슬롯"])
+    day_events: dict[str, list[dict]] = {day: [] for day in DAY_ORDER}
+    for _, r in df_w.sort_values(["요일번호", "시작슬롯", "표시종료슬롯", "과목명"]).iterrows():
         day = str(r.get("요일", ""))
         if day not in DAY_ORDER:
             continue
-        start_slot = int(r.get("시작슬롯", 0))
-        start_map.setdefault((start_slot, day), []).append(r.to_dict())
+        event = r.to_dict()
+        event["start_slot_float"] = float(r.get("시작슬롯", 0))
+        end_slot_float = float(r.get("표시종료슬롯", r.get("종료슬롯", 0)))
+        event["end_slot_float"] = max(event["start_slot_float"] + 1.0, min(float(slot_count), end_slot_float))
+        day_events[day].append(event)
 
     legend_items = [
         ("1학년", "overall-grade-1"),
@@ -1661,41 +1769,89 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
             day_headers.append(f"{day_label}<br>{day_date.month}/{day_date.day}")
         else:
             day_headers.append(day_label)
+    total_height = slot_count * slot_height
 
-    rows_html = []
-    for s in slots:
-        cells = [f"<td class='time-col'>{slot_to_time(s)}</td>"]
-        for d in DAY_ORDER:
-            items = start_map.get((s, d), [])
-            if not items:
-                cells.append("<td class='empty'></td>")
-                continue
-            grid_cols = max(1, len(items))
-            cards = []
-            for item in items:
-                grade_cls = overall_calendar_grade_class(item.get("학년", "-"))
-                course = html.escape(str(item.get("과목명", item.get("과목", ""))))
-                room = html.escape(str(item.get("강의실", "-")))
-                cards.append(
-                    f"<div class='overall-cell-card {grade_cls}'>"
-                    f"<div class='overall-cell-title'>{course}</div>"
-                    f"<div class='overall-cell-sub'>{room}</div>"
+    def build_day_column(events: list[dict]) -> str:
+        if not events:
+            return f"<div class='overall-abs-day-col' style='height:{total_height}px;'></div>"
+
+        groups: list[list[dict]] = []
+        current_group: list[dict] = []
+        current_group_end = -1.0
+        for event in events:
+            start = float(event["start_slot_float"])
+            end = float(event["end_slot_float"])
+            if not current_group or start < current_group_end:
+                current_group.append(event)
+                current_group_end = max(current_group_end, end)
+            else:
+                groups.append(current_group)
+                current_group = [event]
+                current_group_end = end
+        if current_group:
+            groups.append(current_group)
+
+        event_divs: list[str] = []
+        for group in groups:
+            lane_endings: list[float] = []
+            lane_by_exam: dict[int, int] = {}
+            for event in group:
+                start = float(event["start_slot_float"])
+                end = float(event["end_slot_float"])
+                lane_idx = None
+                for idx, lane_end in enumerate(lane_endings):
+                    if lane_end <= start:
+                        lane_idx = idx
+                        lane_endings[idx] = end
+                        break
+                if lane_idx is None:
+                    lane_endings.append(end)
+                    lane_idx = len(lane_endings) - 1
+                lane_by_exam[int(event["시험인덱스"])] = lane_idx
+
+            lane_count = max(1, len(lane_endings))
+            width_pct = 100.0 / lane_count
+            for event in group:
+                lane_idx = lane_by_exam[int(event["시험인덱스"])]
+                left_pct = lane_idx * width_pct
+                top_px = float(event["start_slot_float"]) * slot_height
+                height_px = max(42.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height - 4.0)
+                grade_cls = overall_calendar_grade_class(event.get("학년", "-"))
+                course = html.escape(str(event.get("과목명", event.get("과목", ""))))
+                room = html.escape(str(event.get("강의실", "-")))
+                time_text = html.escape(f"{event.get('시작', '-')}~{event.get('종료', '-')}")
+                event_divs.append(
+                    f"<div class='overall-abs-event {grade_cls}' "
+                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px;'>"
+                    f"<div class='overall-abs-title'>{course}</div>"
+                    f"<div class='overall-abs-sub'>{room}</div>"
+                    f"<div class='overall-abs-sub'>{time_text}</div>"
                     "</div>"
                 )
-            cells.append(
-                "<td class='exam'>"
-                f"<div class='overall-cell-list' style='grid-template-columns: repeat({grid_cols}, minmax(0, 1fr));'>"
-                + "".join(cards)
-                + "</div></td>"
-            )
-        rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
+        return f"<div class='overall-abs-day-col' style='height:{total_height}px;'>{''.join(event_divs)}</div>"
+
+    time_labels = []
+    for slot in range(0, slot_count + 1):
+        top_px = slot * slot_height
+        label = slot_to_time(slot) if slot < slot_count else "20:00"
+        time_labels.append(
+            f"<div class='overall-abs-time-label' style='top:{top_px}px'>{html.escape(label)}</div>"
+        )
+
+    day_columns = [build_day_column(day_events[day]) for day in DAY_ORDER]
     return (
-        "<div class='calendar-wrap overall-calendar-wrap'><table><thead><tr><th>시간</th>"
-        + "".join(f"<th>{h}</th>" for h in day_headers)
-        + "</tr></thead><tbody>"
-        + "".join(rows_html)
-        + "</tbody></table></div>"
+        "<div class='overall-legend'>"
+        + "".join(html_parts[1:-1])
+        + "</div>"
+        + "<div class='overall-abs-wrap'><div class='overall-abs-shell'>"
+        + "<div class='overall-abs-header'><div class='overall-abs-head'>시간</div>"
+        + "".join(f"<div class='overall-abs-head'>{h}</div>" for h in day_headers)
+        + "</div>"
+        + "<div class='overall-abs-body'>"
+        + f"<div class='overall-abs-time-axis' style='height:{total_height}px'>{''.join(time_labels)}</div>"
+        + "".join(day_columns)
+        + "</div></div></div>"
     )
 
 
