@@ -316,6 +316,14 @@ st.markdown(
     .overall-grade-3 {background:#ffedd5;}
     .overall-grade-4 {background:#fee2e2;}
     .overall-grade-x {background:#e5e7eb;}
+    .overall-calendar-wrap table {
+      min-width: 1280px;
+      table-layout: fixed;
+    }
+    .overall-calendar-wrap th,
+    .overall-calendar-wrap td {
+      min-width: 210px;
+    }
     .overall-cell-list {
       display:grid;
       gap:6px;
@@ -340,7 +348,7 @@ st.markdown(
     }
     .overall-cell-title {
       width:100%;
-      font-size:12px;
+      font-size:13px;
       font-weight:900;
       color:#0b1220 !important;
       line-height:1.2;
@@ -348,7 +356,7 @@ st.markdown(
     .overall-cell-sub {
       width:100%;
       margin-top:3px;
-      font-size:11px;
+      font-size:12px;
       font-weight:700;
       color:#334155 !important;
       line-height:1.2;
@@ -1644,6 +1652,15 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
         )
     html_parts.append("</div>")
 
+    day_headers = []
+    week_start = WEEK_START_DATE.get(int(target_week))
+    for idx, day_label in enumerate(DAY_ORDER):
+        if week_start is not None:
+            day_date = week_start + timedelta(days=idx)
+            day_headers.append(f"{day_label}<br>{day_date.month}/{day_date.day}")
+        else:
+            day_headers.append(day_label)
+
     rows_html = []
     for s in slots:
         cells = [f"<td class='time-col'>{slot_to_time(s)}</td>"]
@@ -1658,12 +1675,10 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
                 grade_cls = overall_calendar_grade_class(item.get("학년", "-"))
                 course = html.escape(str(item.get("과목명", item.get("과목", ""))))
                 room = html.escape(str(item.get("강의실", "-")))
-                grade = html.escape(format_grade_label(item.get("학년", "-")))
                 cards.append(
                     f"<div class='overall-cell-card {grade_cls}'>"
                     f"<div class='overall-cell-title'>{course}</div>"
-                    f"<div class='overall-cell-sub'>강의실 {room}</div>"
-                    f"<div class='overall-cell-sub'>{grade}</div>"
+                    f"<div class='overall-cell-sub'>{room}</div>"
                     "</div>"
                 )
             cells.append(
@@ -1675,8 +1690,8 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
         rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
     return (
-        "<div class='calendar-wrap'><table><thead><tr><th>시간</th>"
-        + "".join(f"<th>{d}</th>" for d in DAY_ORDER)
+        "<div class='calendar-wrap overall-calendar-wrap'><table><thead><tr><th>시간</th>"
+        + "".join(f"<th>{h}</th>" for h in day_headers)
         + "</tr></thead><tbody>"
         + "".join(rows_html)
         + "</tbody></table></div>"
