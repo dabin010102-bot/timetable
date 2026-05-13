@@ -290,6 +290,69 @@ st.markdown(
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
     .result-table th {background:#eaf2ff; font-weight:800;}
     .result-table td.change {background:#ffe3e3; color:#7f1d1d !important; font-weight:800;}
+    .overall-legend {
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin:6px 0 10px 0;
+      font-size:13px;
+      font-weight:700;
+      color:#334155 !important;
+    }
+    .overall-legend-item {
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .overall-legend-swatch {
+      width:14px;
+      height:14px;
+      border-radius:4px;
+      border:1px solid rgba(15,23,42,.12);
+      flex:0 0 auto;
+    }
+    .overall-grade-1 {background:#dbeafe;}
+    .overall-grade-2 {background:#dcfce7;}
+    .overall-grade-3 {background:#ffedd5;}
+    .overall-grade-4 {background:#fee2e2;}
+    .overall-grade-x {background:#e5e7eb;}
+    .overall-cell-list {
+      display:grid;
+      gap:6px;
+      width:100%;
+      box-sizing:border-box;
+      overflow:hidden;
+    }
+    .overall-cell-card {
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      min-height:52px;
+      padding:6px 8px;
+      border-radius:8px;
+      border:1px solid rgba(15,23,42,.10);
+      box-sizing:border-box;
+      overflow:hidden;
+      text-align:center;
+      word-break:keep-all;
+      overflow-wrap:anywhere;
+    }
+    .overall-cell-title {
+      width:100%;
+      font-size:12px;
+      font-weight:900;
+      color:#0b1220 !important;
+      line-height:1.2;
+    }
+    .overall-cell-sub {
+      width:100%;
+      margin-top:3px;
+      font-size:11px;
+      font-weight:700;
+      color:#334155 !important;
+      line-height:1.2;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -315,6 +378,7 @@ COURSEEN_CANDIDATES = [
     str(Path(r"C:\xpressmp\coursetable.csv")),
 ]
 ROOM_ORDER = [402, 479, 482, 483, 502, 583]
+ROOM_CAP = {402: 23, 479: 55, 482: 52, 483: 69, 502: 45, 583: 32}
 WEIGHT_ROOM_MOVE = 0.1048
 WEIGHT_TIME_MOVE = 0.4331
 WEIGHT_DAILY = 0.4620
@@ -1537,6 +1601,88 @@ def dataframe_to_html_table(df: pd.DataFrame, highlight_cols: list[str] | None =
     return "".join(parts)
 
 
+def overall_calendar_grade_class(value) -> str:
+    grade = normalize_grade_value(value)
+    if grade == "1학년":
+        return "overall-grade-1"
+    if grade == "2학년":
+        return "overall-grade-2"
+    if grade == "3학년":
+        return "overall-grade-3"
+    if grade == "4학년":
+        return "overall-grade-4"
+    return "overall-grade-x"
+
+
+def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
+    slots = list(range(0, 22))
+    df_w = df_src[df_src["주차"] == target_week].copy()
+    if df_w.empty:
+        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
+
+    start_map: dict[tuple[int, str], list[dict]] = {}
+    for _, r in df_w.sort_values(["요일번호", "시작슬롯", "과목명"]).iterrows():
+        day = str(r.get("요일", ""))
+        if day not in DAY_ORDER:
+            continue
+        s0 = int(r.get("시작슬롯", 0))
+        start_map.setdefault((s0, day), []).append(r.to_dict())
+
+    legend_items = [
+        ("1학년", "overall-grade-1"),
+        ("2학년", "overall-grade-2"),
+        ("3학년", "overall-grade-3"),
+        ("4학년", "overall-grade-4"),
+    ]
+    html_parts = ["<div class='overall-legend'>"]
+    for label, cls in legend_items:
+        html_parts.append(
+            "<div class='overall-legend-item'>"
+            f"<span class='overall-legend-swatch {cls}'></span>"
+            f"<span>{html.escape(label)}</span>"
+            "</div>"
+        )
+    html_parts.append("</div>")
+
+    rows_html = []
+    for s in slots:
+        cells = [f"<td class='time-col'>{slot_to_time(s)}</td>"]
+        for d in DAY_ORDER:
+            items = start_map.get((s, d), [])
+            if not items:
+                cells.append("<td class='empty'></td>")
+                continue
+            grid_cols = max(1, len(items))
+            cards = []
+            for item in items:
+                grade_cls = overall_calendar_grade_class(item.get("학년", "-"))
+                course = html.escape(str(item.get("과목명", item.get("과목", ""))))
+                room = html.escape(str(item.get("강의실", "-")))
+                grade = html.escape(format_grade_label(item.get("학년", "-")))
+                cards.append(
+                    f"<div class='overall-cell-card {grade_cls}'>"
+                    f"<div class='overall-cell-title'>{course}</div>"
+                    f"<div class='overall-cell-sub'>강의실 {room}</div>"
+                    f"<div class='overall-cell-sub'>{grade}</div>"
+                    "</div>"
+                )
+            cells.append(
+                "<td class='exam'>"
+                f"<div class='overall-cell-list' style='grid-template-columns: repeat({grid_cols}, minmax(0, 1fr));'>"
+                + "".join(cards)
+                + "</div></td>"
+            )
+        rows_html.append("<tr>" + "".join(cells) + "</tr>")
+
+    return (
+        "<div class='calendar-wrap'><table><thead><tr><th>시간</th>"
+        + "".join(f"<th>{d}</th>" for d in DAY_ORDER)
+        + "</tr></thead><tbody>"
+        + "".join(rows_html)
+        + "</tbody></table></div>"
+    )
+
+
 def render_calendar_grid(df_student: pd.DataFrame, target_week: int):
     st.markdown(f"#### {target_week}주차 캘린더형 시험시간표")
     table_html = build_calendar_html(df_student, target_week)
@@ -2349,6 +2495,41 @@ elif menu == "최적화 결과":
                 file_name=pdf_path.name,
                 mime="application/pdf",
             )
+
+    st.markdown("#### 전체 캘린더 보기")
+    overall_exam_df = exam_df.copy()
+    if "manual_moves" in st.session_state and st.session_state.manual_moves:
+        for k, mv in st.session_state.manual_moves.items():
+            idx = int(k)
+            mask = overall_exam_df["시험인덱스"] == idx
+            if not mask.any():
+                continue
+            dur_min = int(overall_exam_df.loc[mask, "시험시간(분)"].iloc[0])
+            dur_slots = max(1, int((dur_min + 29) // 30))
+            room_value = mv.get("room", mv.get("강의실", []))
+            room_list = room_value if isinstance(room_value, list) else [room_value]
+            room_text = " ".join(str(int(r)) for r in room_list)
+            overall_exam_df.loc[mask, "주차"] = int(mv["week"])
+            overall_exam_df.loc[mask, "요일번호"] = int(mv["day"])
+            overall_exam_df.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
+            overall_exam_df.loc[mask, "시작슬롯"] = int(mv["start_slot"])
+            overall_exam_df.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
+            overall_exam_df.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"]) + dur_slots)
+            overall_exam_df.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
+            overall_exam_df.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
+            overall_exam_df.loc[mask, "강의실"] = room_text
+            overall_exam_df.loc[mask, "강의실목록"] = [room_list for _ in range(int(mask.sum()))]
+    week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
+    if not week_values:
+        st.info("표시할 전체 캘린더 데이터가 없습니다.")
+    else:
+        week_tabs = st.tabs([f"Week {w}" for w in week_values])
+        for tab, week_value in zip(week_tabs, week_values):
+            with tab:
+                st.markdown(
+                    build_overall_calendar_html(overall_exam_df, int(week_value)),
+                    unsafe_allow_html=True,
+                )
 
 
 
