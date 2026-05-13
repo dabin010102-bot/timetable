@@ -1101,6 +1101,7 @@ def build_grade_map_from_courseen(df_courseen: pd.DataFrame) -> dict[str, str]:
 
 def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: dict[str, str] | None = None) -> pd.DataFrame:
     orig_base = orig_maps.get("base", {})
+    orig_exact = orig_maps.get("exact", {})
     grade_map = grade_map or {}
     out = df.copy()
     old_time = []
@@ -1112,7 +1113,10 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
 
     for _, r in out.iterrows():
         key = str(r["정규과목"])
-        meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
+        exact_key = normalize_exact(r.get("과목", ""))
+        meta = orig_exact.get(exact_key)
+        if meta is None:
+            meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
 
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
