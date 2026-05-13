@@ -826,7 +826,9 @@ def score_move_impact(
     sim.loc[mask, "강의실"] = " ".join(str(x) for x in new_rooms)
 
     # 변경 건수/영향
-    time_changed = int((int(trow["주차"]) != int(new_week)) or (int(trow["요일번호"]) != int(new_day)) or (int(trow["시작슬롯"]) != int(new_start)))
+    old_key = (int(trow["요일번호"]), int(trow["시작슬롯"]))
+    new_key = (int(new_day), int(new_start))
+    time_changed = int(old_key != new_key)
     room_changed = int(set(new_rooms) != set(int(x) for x in trow["강의실목록"]))
     affected_students = len(target_students)
 
@@ -984,7 +986,7 @@ def recommend_move_alternatives(
                     if w == cur_week and d == cur_day and st == cur_start and room in set(int(x) for x in target["강의실목록"]):
                         continue
                     daily_exam_increase = max(0, int(res.get("daily3_increase", 0))) + max(0, int(res.get("daily4_increase", 0)))
-                    time_changed = 1 if int(res.get("time_move_delta", 0)) != 0 else 0
+                    time_changed = 1 if (int(d), int(st)) != (int(cur_day), int(cur_start)) else 0
                     room_changed = 1 if int(res.get("room_change_delta", 0)) != 0 else 0
                     candidates.append(
                         {
@@ -2295,11 +2297,13 @@ elif menu == "전체 시간표":
                                         warning_items = []
                                         orig_day = int(sel_row["요일번호"])
                                         orig_start = int(sel_row["시작슬롯"])
+                                        old_key = (orig_day, orig_start)
+                                        new_key = (int(dnum), int(st_slot))
                                         if abs(int(dnum) - orig_day) > D_MAX:
                                             warning_items.append("D_MAX 초과")
                                         if abs(int(st_slot) - orig_start) > T_MAX:
                                             warning_items.append("T_MAX 초과")
-                                        if int(st_slot) != int(orig_start):
+                                        if old_key != new_key:
                                             warning_items.append("시간 변경")
                                         if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
                                             warning_items.append("강의실 변경")

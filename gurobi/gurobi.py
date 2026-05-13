@@ -657,6 +657,7 @@ def build_instance_18() -> dict:
     for name in selected:
         orig_slots_raw = sorted(ot_meta[name]["OrigSlots"])
         orig_slots = []
+        orig_daystart_pairs = sorted(set((int(day), int(start)) for week, day, start in orig_slots_raw))
         orig_weeks = sorted(set(week for week, _, _ in orig_slots_raw))
         for week, day, start in orig_slots_raw:
             key = (week, day)
@@ -696,6 +697,7 @@ def build_instance_18() -> dict:
                 "dur_slots": dur_slots,
                 "dur_minutes": dur_minutes,
                 "orig_slots": orig_slots,
+                "orig_daystart_pairs": orig_daystart_pairs,
                 "orig_weeks": orig_weeks,
                 "orig_room_allow": [1 if r in ot_meta[name]["OrigRooms"] else 0 for r in room_vals],
             }
@@ -770,12 +772,11 @@ def run_exact_18() -> dict | None:
     orig_daytime_pairs = {}
     for i in I:
         triples = set()
-        pairs = set()
+        pairs = set((int(day), int(start)) for day, start in inst["exams"][i].get("orig_daystart_pairs", []))
         for day_one_based, start in inst["exams"][i]["orig_slots"]:
             day_idx = day_one_based - 1
             week, dow = inst["day_keys"][day_idx]
             triples.add((week, dow, start))
-            pairs.add((dow, start))
         orig_time_triplets[i] = triples
         orig_daytime_pairs[i] = pairs
 
