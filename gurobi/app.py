@@ -988,12 +988,14 @@ def recommend_move_alternatives(
                     daily_exam_increase = max(0, int(res.get("daily3_increase", 0))) + max(0, int(res.get("daily4_increase", 0)))
                     time_changed = 1 if (int(d), int(st)) != (int(cur_day), int(cur_start)) else 0
                     room_changed = 1 if int(res.get("room_change_delta", 0)) != 0 else 0
+                    distance = abs(int(d) - int(cur_day)) + abs(int(st) - int(cur_start))
                     candidates.append(
                         {
                             "week": w, "day": d, "start": st, "room": int(room),
                             "daily_exam_increase": daily_exam_increase,
                             "time_changed": time_changed,
                             "room_changed": room_changed,
+                            "distance": distance,
                             **res,
                         }
                     )
@@ -1004,6 +1006,7 @@ def recommend_move_alternatives(
             int(x.get("daily_exam_increase", 0)),
             int(x.get("time_changed", 0)),
             int(x.get("room_changed", 0)),
+            int(x.get("distance", 0)),
         ),
     )
     return candidates[:topn]
@@ -2152,6 +2155,11 @@ elif menu == "전체 시간표":
         selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
     if viz_course != "전체":
         selectable_week = selectable_week[selectable_week["과목명"].astype(str) == str(viz_course)]
+    persisted_sel_idx = st.session_state.get("sim_selected_idx")
+    if persisted_sel_idx is not None and int(persisted_sel_idx) not in set(selectable_week["시험인덱스"].tolist()):
+        extra_row = exam_df_view[exam_df_view["시험인덱스"] == int(persisted_sel_idx)].copy()
+        if not extra_row.empty:
+            selectable_week = pd.concat([selectable_week, extra_row], ignore_index=True).drop_duplicates(subset=["시험인덱스"])
     selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
     sel_idx: int | None = None
@@ -2188,7 +2196,6 @@ elif menu == "전체 시간표":
 
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
-                "week": int(sim_week_num),
             }
             if st.session_state.get("move_candidate_meta") != current_candidate_context:
                 st.session_state["move_candidates"] = []
@@ -2412,6 +2419,8 @@ elif menu == "전체 시간표":
                     sim_day_no = int(chosen_row["dnum"])
                     sim_start_slot = int(chosen_row["slot"])
                     sim_room_choice = list(chosen_row["room_combo"])
+                    current_old_key = (int(sel_row["요일번호"]), int(sel_row["시작슬롯"]))
+                    current_new_key = (int(sim_day_no), int(sim_start_slot))
 
                     st.markdown("#### 선택 후보 요약")
                     st.markdown(
@@ -2425,8 +2434,8 @@ elif menu == "전체 시간표":
                         unsafe_allow_html=True,
                     )
                     student_conflict = int(out.get("student_conflict_count", 0))
-                    time_changed = int(out.get("time_move_delta", 0)) != 0
-                    room_changed = int(out.get("room_change_delta", 0)) != 0
+                    time_changed = current_old_key != current_new_key
+                    room_changed = set(normalize_room_choice(sim_room_choice)) != set(normalize_room_choice(sel_row["강의실목록"]))
                     daily_inc = int(out.get("daily3_increase", 0)) > 0 or int(out.get("daily4_increase", 0)) > 0
                     dmax_tmax_warn = "D_MAX 초과" in str(chosen_row["경고"]) or "T_MAX 초과" in str(chosen_row["경고"])
                     obj_delta = float(out.get("objective_delta", 0.0))
@@ -2442,6 +2451,7 @@ elif menu == "전체 시간표":
                     st.markdown(f"<div class='warn-badge-row'>{badge_html}</div>", unsafe_allow_html=True)
                     st.info(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
                     st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
+                    st.caption("다른 후보도 선택해 비교할 수 있습니다.")
 
                     st.markdown("#### 추천 후보 TOP3")
                     top3 = display_cand_df.copy()
@@ -2449,11 +2459,20 @@ elif menu == "전체 시간표":
                         pd.to_numeric(top3["하루3개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
                         + pd.to_numeric(top3["하루4개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
                     )
-                    top3["time_changed"] = top3["경고"].astype(str).str.contains("시간 변경", regex=False).astype(int)
-                    top3["room_changed"] = top3["경고"].astype(str).str.contains("강의실 변경", regex=False).astype(int)
+                    top3["time_changed"] = top3.apply(
+                        lambda rr: 1 if (int(rr["dnum"]), int(rr["slot"])) != (int(sel_row["요일번호"]), int(sel_row["시작슬롯"])) else 0,
+                        axis=1,
+                    )
+                    top3["room_changed"] = top3["room_combo"].apply(
+                        lambda rr: 1 if set(normalize_room_choice(rr)) != set(normalize_room_choice(sel_row["강의실목록"])) else 0
+                    )
+                    top3["distance"] = top3.apply(
+                        lambda rr: abs(int(rr["dnum"]) - int(sel_row["요일번호"])) + abs(int(rr["slot"]) - int(sel_row["시작슬롯"])),
+                        axis=1,
+                    )
                     top3 = top3.sort_values(
-                        by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed"],
-                        ascending=[True, True, True, True],
+                        by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed", "distance"],
+                        ascending=[True, True, True, True, True],
                     ).head(3)
                     if top3.empty:
                         st.info("현재 조건에서 실질적인 이동 후보가 없습니다.")
