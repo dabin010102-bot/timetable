@@ -328,6 +328,7 @@ st.markdown(
       display:grid;
       gap:6px;
       width:100%;
+      max-width:100%;
       box-sizing:border-box;
       overflow:hidden;
     }
@@ -342,27 +343,10 @@ st.markdown(
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
       overflow:hidden;
+      max-width:100%;
       text-align:center;
       word-break:keep-all;
       overflow-wrap:anywhere;
-    }
-    .overall-segment-single {
-      border-radius:8px;
-    }
-    .overall-segment-start {
-      border-radius:8px 8px 0 0;
-    }
-    .overall-segment-cont {
-      border-radius:0;
-      min-height:52px;
-    }
-    .overall-segment-end {
-      border-radius:0 0 8px 8px;
-    }
-    .overall-segment-filler {
-      min-height:52px;
-      display:block;
-      width:100%;
     }
     .overall-cell-title {
       width:100%;
@@ -1645,36 +1629,13 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
         return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
-    df_w["표시종료슬롯"] = pd.to_numeric(df_w["표시종료슬롯"], errors="coerce").fillna(df_w["종료슬롯"])
-    day_event_map: dict[str, list[dict]] = {day: [] for day in DAY_ORDER}
-    lane_by_exam: dict[int, int] = {}
-    lane_count_by_day: dict[str, int] = {day: 1 for day in DAY_ORDER}
-    for _, r in df_w.sort_values(["요일번호", "시작슬롯", "표시종료슬롯", "과목명"]).iterrows():
+    start_map: dict[tuple[int, str], list[dict]] = {}
+    for _, r in df_w.sort_values(["요일번호", "시작슬롯", "과목명"]).iterrows():
         day = str(r.get("요일", ""))
         if day not in DAY_ORDER:
             continue
-        event = r.to_dict()
-        event["start_slot_int"] = int(r.get("시작슬롯", 0))
-        event["end_slot_int"] = int(float(r.get("표시종료슬롯", r.get("종료슬롯", 0))) + 0.999999)
-        event["end_slot_int"] = max(event["start_slot_int"] + 1, min(22, event["end_slot_int"]))
-        day_event_map[day].append(event)
-
-    for day in DAY_ORDER:
-        lane_endings: list[int] = []
-        for event in day_event_map[day]:
-            start_slot = int(event["start_slot_int"])
-            end_slot = int(event["end_slot_int"])
-            assigned_lane = None
-            for lane_idx, lane_end in enumerate(lane_endings):
-                if lane_end <= start_slot:
-                    assigned_lane = lane_idx
-                    lane_endings[lane_idx] = end_slot
-                    break
-            if assigned_lane is None:
-                lane_endings.append(end_slot)
-                assigned_lane = len(lane_endings) - 1
-            lane_by_exam[int(event["시험인덱스"])] = assigned_lane
-        lane_count_by_day[day] = max(1, len(lane_endings))
+        start_slot = int(r.get("시작슬롯", 0))
+        start_map.setdefault((start_slot, day), []).append(r.to_dict())
 
     legend_items = [
         ("1학년", "overall-grade-1"),
@@ -1705,48 +1666,26 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
     for s in slots:
         cells = [f"<td class='time-col'>{slot_to_time(s)}</td>"]
         for d in DAY_ORDER:
-            items = [
-                item for item in day_event_map[d]
-                if int(item["start_slot_int"]) <= s < int(item["end_slot_int"])
-            ]
+            items = start_map.get((s, d), [])
             if not items:
                 cells.append("<td class='empty'></td>")
                 continue
-            grid_cols = lane_count_by_day.get(d, 1)
-            lane_cards = ["<div class='overall-segment-filler'></div>" for _ in range(grid_cols)]
+            grid_cols = max(1, len(items))
+            cards = []
             for item in items:
                 grade_cls = overall_calendar_grade_class(item.get("학년", "-"))
                 course = html.escape(str(item.get("과목명", item.get("과목", ""))))
                 room = html.escape(str(item.get("강의실", "-")))
-                lane_idx = lane_by_exam.get(int(item["시험인덱스"]), 0)
-                start_slot = int(item["start_slot_int"])
-                end_slot = int(item["end_slot_int"])
-                if end_slot - start_slot <= 1:
-                    seg_cls = "overall-segment-single"
-                elif s == start_slot:
-                    seg_cls = "overall-segment-start"
-                elif s == end_slot - 1:
-                    seg_cls = "overall-segment-end"
-                else:
-                    seg_cls = "overall-segment-cont"
-
-                if s == start_slot:
-                    card_inner = (
-                        f"<div class='overall-cell-title'>{course}</div>"
-                        f"<div class='overall-cell-sub'>{room}</div>"
-                    )
-                else:
-                    card_inner = "<div class='overall-segment-filler'></div>"
-
-                lane_cards[lane_idx] = (
-                    f"<div class='overall-cell-card {grade_cls} {seg_cls}'>"
-                    f"{card_inner}"
+                cards.append(
+                    f"<div class='overall-cell-card {grade_cls}'>"
+                    f"<div class='overall-cell-title'>{course}</div>"
+                    f"<div class='overall-cell-sub'>{room}</div>"
                     "</div>"
                 )
             cells.append(
                 "<td class='exam'>"
                 f"<div class='overall-cell-list' style='grid-template-columns: repeat({grid_cols}, minmax(0, 1fr));'>"
-                + "".join(lane_cards)
+                + "".join(cards)
                 + "</div></td>"
             )
         rows_html.append("<tr>" + "".join(cells) + "</tr>")
