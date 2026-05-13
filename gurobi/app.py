@@ -414,6 +414,7 @@ st.markdown(
     .integrated-cal-grid {
       position:relative;
       z-index:1;
+      overflow:hidden;
     }
     .integrated-cal-hline {
       position:absolute;
@@ -1780,6 +1781,8 @@ def build_integrated_exam_calendar_html(df_src: pd.DataFrame, target_week: int) 
     row_height = 56
     top_pad = 10
     body_height = row_height * 22
+    day_col_pct = 20.0
+    day_inner_pad_pct = 0.45
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
         return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
@@ -1836,8 +1839,9 @@ def build_integrated_exam_calendar_html(df_src: pd.DataFrame, target_week: int) 
         day_idx = int(row["요일번호"]) - 1
         same_count = max(1, int(row.get("same_count", 1)))
         same_idx = int(row.get("same_idx", 0))
-        left_pct = day_idx * 20 + (20 / same_count) * same_idx
-        width_pct = 20 / same_count
+        usable_pct = max(day_col_pct - (day_inner_pad_pct * 2), 4.0)
+        width_pct = usable_pct / same_count
+        left_pct = (day_idx * day_col_pct) + day_inner_pad_pct + (same_idx * width_pct)
         top = top_pad + float(row["시작슬롯"]) * row_height + 3
         height = max(40, (float(row["표시종료슬롯"]) - float(row["시작슬롯"])) * row_height - 6)
         grade_cls = integrated_calendar_grade_class(row.get("학년", "-"))
@@ -1846,7 +1850,7 @@ def build_integrated_exam_calendar_html(df_src: pd.DataFrame, target_week: int) 
         time_text = html.escape(f"{row.get('시작', '-') }~{row.get('종료', '-')}")
         parts.append(
             f"<div class='integrated-cal-event {grade_cls}' "
-            f"style='left:calc({left_pct:.6f}% + 4px); width:calc({width_pct:.6f}% - 8px); top:{top:.1f}px; height:{height:.1f}px;'>"
+            f"style='left:{left_pct:.6f}%; width:{max(width_pct - 0.25, 0.8):.6f}%; top:{top:.1f}px; height:{height:.1f}px;'>"
             f"<div class='integrated-cal-title'>{title}</div>"
             f"<div class='integrated-cal-sub'>{room}</div>"
             f"<div class='integrated-cal-sub'>{time_text}</div>"
