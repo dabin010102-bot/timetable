@@ -7,7 +7,6 @@ import re
 import io
 from itertools import combinations
 from pathlib import Path
-from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -291,172 +290,6 @@ st.markdown(
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
     .result-table th {background:#eaf2ff; font-weight:800;}
     .result-table td.change {background:#ffe3e3; color:#7f1d1d !important; font-weight:800;}
-    .candidate-card {
-      border: 1px solid #cbd5e1;
-      border-radius: 14px;
-      background: #ffffff;
-      padding: 14px 16px;
-      margin: 8px 0 12px 0;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-    }
-    .candidate-card-title {
-      font-size: 13px;
-      font-weight: 800;
-      color: #475569 !important;
-      margin-bottom: 8px;
-    }
-    .candidate-card-main {
-      font-size: 22px;
-      font-weight: 900;
-      color: #0f172a !important;
-      line-height: 1.25;
-    }
-    .candidate-card-sub {
-      margin-top: 6px;
-      font-size: 15px;
-      font-weight: 700;
-      color: #1e3a8a !important;
-    }
-    .warn-badge-row {
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin:8px 0 10px 0;
-    }
-    .warn-badge {
-      display:inline-block;
-      border-radius:999px;
-      padding:6px 10px;
-      font-size:12px;
-      font-weight:800;
-      line-height:1.2;
-    }
-    .warn-green {background:#dcfce7; color:#166534 !important; border:1px solid #86efac;}
-    .warn-yellow {background:#fef3c7; color:#92400e !important; border:1px solid #fcd34d;}
-    .warn-orange {background:#ffedd5; color:#9a3412 !important; border:1px solid #fdba74;}
-    .warn-red {background:#fee2e2; color:#991b1b !important; border:1px solid #fca5a5;}
-    .integrated-cal-wrap {
-      overflow-x:auto;
-      padding-bottom:10px;
-      margin:10px 0 18px 0;
-    }
-    .integrated-cal-legend {
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      margin:0 0 10px 0;
-      font-size:13px;
-      font-weight:700;
-      color:#334155 !important;
-    }
-    .integrated-cal-legend-item {
-      display:flex;
-      align-items:center;
-      gap:6px;
-    }
-    .integrated-cal-legend-swatch {
-      width:14px;
-      height:14px;
-      border-radius:4px;
-      border:1px solid rgba(15,23,42,.12);
-      flex:0 0 auto;
-    }
-    .integrated-cal-shell {
-      min-width:1180px;
-      border:1px solid #d8e0ea;
-      border-radius:16px;
-      background:#ffffff;
-      overflow:hidden;
-      box-shadow:0 4px 18px rgba(15,23,42,.06);
-    }
-    .integrated-cal-header {
-      display:grid;
-      grid-template-columns: 78px repeat(5, 1fr);
-      background:#eef5ff;
-      border-bottom:1px solid #d8e0ea;
-    }
-    .integrated-cal-head-cell {
-      padding:12px 8px;
-      text-align:center;
-      font-weight:900;
-      color:#0f172a !important;
-      border-right:1px solid #d8e0ea;
-    }
-    .integrated-cal-head-cell:last-child {border-right:none;}
-    .integrated-cal-body {
-      position:relative;
-      display:grid;
-      grid-template-columns: 78px 1fr;
-      background:
-        linear-gradient(to right, transparent 0, transparent 78px, #d8e0ea 78px, #d8e0ea 79px, transparent 79px),
-        linear-gradient(to right, transparent calc(20% + 78px), #e2e8f0 calc(20% + 78px), #e2e8f0 calc(20% + 79px), transparent calc(20% + 79px)),
-        linear-gradient(to right, transparent calc(40% + 78px), #e2e8f0 calc(40% + 78px), #e2e8f0 calc(40% + 79px), transparent calc(40% + 79px)),
-        linear-gradient(to right, transparent calc(60% + 78px), #e2e8f0 calc(60% + 78px), #e2e8f0 calc(60% + 79px), transparent calc(60% + 79px)),
-        linear-gradient(to right, transparent calc(80% + 78px), #e2e8f0 calc(80% + 78px), #e2e8f0 calc(80% + 79px), transparent calc(80% + 79px));
-      background-color:#ffffff;
-    }
-    .integrated-cal-times {
-      position:relative;
-      z-index:2;
-      background:#f8fbff;
-      border-right:1px solid #d8e0ea;
-    }
-    .integrated-cal-time {
-      position:absolute;
-      left:0;
-      width:100%;
-      transform:translateY(-50%);
-      text-align:center;
-      font-size:12px;
-      font-weight:800;
-      color:#334155 !important;
-    }
-    .integrated-cal-grid {
-      position:relative;
-      z-index:1;
-      overflow:hidden;
-    }
-    .integrated-cal-hline {
-      position:absolute;
-      left:0;
-      right:0;
-      border-top:1px solid #edf2f7;
-    }
-    .integrated-cal-event {
-      position:absolute;
-      border-radius:14px;
-      padding:10px 10px 9px 10px;
-      box-sizing:border-box;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      align-items:flex-start;
-      text-align:left;
-      overflow:hidden;
-      word-break:keep-all;
-      overflow-wrap:anywhere;
-      line-height:1.25;
-      border:1px solid rgba(15,23,42,.10);
-      box-shadow:0 6px 14px rgba(15,23,42,.10);
-    }
-    .integrated-cal-title {
-      width:100%;
-      font-size:13px;
-      font-weight:900;
-      color:#0f172a !important;
-    }
-    .integrated-cal-sub {
-      width:100%;
-      margin-top:4px;
-      font-size:12px;
-      font-weight:700;
-      color:#334155 !important;
-    }
-    .integrated-grade-1 {background:#dbeafe;}
-    .integrated-grade-2 {background:#dcfce7;}
-    .integrated-grade-3 {background:#ffedd5;}
-    .integrated-grade-4 {background:#fee2e2;}
-    .integrated-grade-x {background:#e5e7eb;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -482,10 +315,9 @@ COURSEEN_CANDIDATES = [
     str(Path(r"C:\xpressmp\coursetable.csv")),
 ]
 ROOM_ORDER = [402, 479, 482, 483, 502, 583]
-ROOM_CAP = {402: 23, 479: 55, 482: 52, 483: 69, 502: 45, 583: 32}
-WEIGHT_ROOM_MOVE = 0.231902554
-WEIGHT_TIME_MOVE = 0.329257956
-WEIGHT_DAILY = 0.43883949
+WEIGHT_ROOM_MOVE = 0.1048
+WEIGHT_TIME_MOVE = 0.4331
+WEIGHT_DAILY = 0.4620
 D_MAX = 0
 T_MAX = 4
 REPORT_DIR_CANDIDATES = [
@@ -754,39 +586,24 @@ def find_student_row(df_is: pd.DataFrame, sid: str) -> int | None:
     return int(hit.index[0])
 
 
-def has_section_suffix(text: str) -> bool:
-    return re.search(r"[-_]\d+$", str(text or "").strip()) is not None
-
-
 def student_exam_df(exam_df: pd.DataFrame, df_is: pd.DataFrame, row_idx: int) -> pd.DataFrame:
     is_cols = [str(c) for c in df_is.columns]
     taken_idxs = []
-    positive_cols = []
-
-    for c in is_cols:
-        try:
-            v = float(df_is.at[row_idx, c])
-            if v > 0:
-                positive_cols.append(c)
-        except Exception:
-            continue
 
     unique_courses = exam_df[["시험인덱스", "과목"]].drop_duplicates()
     for _, r in unique_courses.iterrows():
         idx = int(r["시험인덱스"])
         course = str(r["과목"])
-        exact_course = normalize_exact(course)
-        base_course = normalize_name(course)
-
-        if has_section_suffix(course):
-            # 분반번호가 있는 과목은 학생이 실제 1로 가진 정확한 분반 컬럼만 인정한다.
-            taken = any(normalize_exact(c) == exact_course for c in positive_cols)
-        else:
-            # 단일 과목만 base_key 기준으로 허용한다.
-            taken = any(
-                normalize_name(c) == base_course and not has_section_suffix(c)
-                for c in positive_cols
-            )
+        cols = resolve_is_columns_for_course(is_cols, course)
+        taken = False
+        for c in cols:
+            try:
+                v = float(df_is.at[row_idx, c])
+                if v > 0:
+                    taken = True
+                    break
+            except Exception:
+                continue
         if taken:
             taken_idxs.append(idx)
 
@@ -808,31 +625,6 @@ def normalize_room_choice(new_room) -> list[int]:
 
 def format_room_choice(room_choice) -> str:
     return "+".join(str(x) for x in normalize_room_choice(room_choice))
-
-
-def apply_manual_moves(df_src: pd.DataFrame, manual_moves: dict) -> pd.DataFrame:
-    out = df_src.copy()
-    for k, mv in manual_moves.items():
-        idx = int(k)
-        mask = out["시험인덱스"] == idx
-        if not mask.any():
-            continue
-        dur_min = int(out.loc[mask, "시험시간(분)"].iloc[0])
-        dur_slots = max(1, int((dur_min + 29) // 30))
-        move_rooms = normalize_room_choice(mv.get("room", mv.get("강의실", [])))
-        move_room_text = format_room_choice(move_rooms)
-
-        out.loc[mask, "주차"] = int(mv["week"])
-        out.loc[mask, "요일번호"] = int(mv["day"])
-        out.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
-        out.loc[mask, "시작슬롯"] = int(mv["start_slot"])
-        out.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
-        out.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"]) + dur_slots)
-        out.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
-        out.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
-        out.loc[mask, "강의실"] = move_room_text
-        out.loc[mask, "강의실목록"] = [move_rooms for _ in range(int(mask.sum()))]
-    return out.sort_values(["주차", "start_dt", "과목"]).reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -948,9 +740,7 @@ def score_move_impact(
     sim.loc[mask, "강의실"] = " ".join(str(x) for x in new_rooms)
 
     # 변경 건수/영향
-    old_key = (int(trow["요일번호"]), int(trow["시작슬롯"]))
-    new_key = (int(new_day), int(new_start))
-    time_changed = int(old_key != new_key)
+    time_changed = int((int(trow["주차"]) != int(new_week)) or (int(trow["요일번호"]) != int(new_day)) or (int(trow["시작슬롯"]) != int(new_start)))
     room_changed = int(set(new_rooms) != set(int(x) for x in trow["강의실목록"]))
     affected_students = len(target_students)
 
@@ -1105,32 +895,25 @@ def recommend_move_alternatives(
                     res = score_move_impact(exam_df, target_idx, w, d, st, int(room), student_sets, summary)
                     if not res.get("feasible", False):
                         continue
+                    impact = (
+                        abs(float(res["objective_delta"])) * 1000
+                        + max(0, int(res["daily4_increase"])) * 100000
+                        + max(0, int(res["daily3_increase"])) * 1000
+                    )
                     if w == cur_week and d == cur_day and st == cur_start and room in set(int(x) for x in target["강의실목록"]):
                         continue
-                    daily_exam_increase = max(0, int(res.get("daily3_increase", 0))) + max(0, int(res.get("daily4_increase", 0)))
-                    time_changed = 1 if (int(d), int(st)) != (int(cur_day), int(cur_start)) else 0
-                    room_changed = 1 if int(res.get("room_change_delta", 0)) != 0 else 0
-                    distance = abs(int(d) - int(cur_day)) + abs(int(st) - int(cur_start))
+                    tag = "학생충돌0/영향작음"
+                    if int(res["room_change_delta"]) <= 0 and int(res["time_move_delta"]) == 0:
+                        tag = "강의실변경 최소"
+                    elif int(res["daily3_increase"]) > 0:
+                        tag = "일부 학생부담 증가"
                     candidates.append(
                         {
                             "week": w, "day": d, "start": st, "room": int(room),
-                            "daily_exam_increase": daily_exam_increase,
-                            "time_changed": time_changed,
-                            "room_changed": room_changed,
-                            "distance": distance,
-                            **res,
+                            "impact": impact, "tag": tag, **res
                         }
                     )
-    candidates = sorted(
-        candidates,
-        key=lambda x: (
-            float(x.get("objective_delta", 0.0)),
-            int(x.get("daily_exam_increase", 0)),
-            int(x.get("time_changed", 0)),
-            int(x.get("room_changed", 0)),
-            int(x.get("distance", 0)),
-        ),
-    )
+    candidates = sorted(candidates, key=lambda x: (x["impact"], x["objective_delta"]))
     return candidates[:topn]
 
 
@@ -1226,7 +1009,6 @@ def build_grade_map_from_courseen(df_courseen: pd.DataFrame) -> dict[str, str]:
 
 def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: dict[str, str] | None = None) -> pd.DataFrame:
     orig_base = orig_maps.get("base", {})
-    orig_exact = orig_maps.get("exact", {})
     grade_map = grade_map or {}
     out = df.copy()
     old_time = []
@@ -1238,15 +1020,12 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
 
     for _, r in out.iterrows():
         key = str(r["정규과목"])
-        exact_key = normalize_exact(r.get("과목", ""))
-        meta = orig_exact.get(exact_key)
-        if meta is None:
-            meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
+        meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
 
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
         cur_start = int(r["시작슬롯"])
-        cur_rooms = set(normalize_room_choice(r.get("강의실목록", r.get("강의실", []))))
+        cur_rooms = set(r["강의실목록"])
 
         slots = meta.get("slots", set())
         weekslots = meta.get("weekslots", set())
@@ -1270,10 +1049,7 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
         time_status.append("시간 변경" if time_changed else "유지")
         room_status.append("강의실 변경" if room_changed else "유지")
         final_status.append(fs)
-        grade_val = grade_map.get(key, meta.get("grade", "-"))
-        if normalize_grade_value(grade_val) == "-":
-            grade_val = fallback_grade_for_course(r.get("과목", r.get("과목명", "")))
-        grade_col.append(grade_val)
+        grade_col.append(grade_map.get(key, meta.get("grade", "-")))
 
         if slots:
             first_slot = sorted(slots)[0]
@@ -1328,7 +1104,7 @@ def add_change_columns_student(
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
         cur_start = int(r["시작슬롯"])
-        cur_rooms = set(normalize_room_choice(r.get("강의실목록", r.get("강의실", []))))
+        cur_rooms = set(r["강의실목록"])
 
         # 1) 학생이 실제 수강한 분반 컬럼 찾기(IS 기준)
         match_cols = resolve_is_columns_for_course(is_cols, course)
@@ -1397,10 +1173,7 @@ def add_change_columns_student(
         room_status.append("강의실 변경" if room_changed else "유지")
         final_status.append(fs)
         section_used.append(picked_section)
-        grade_val = grade_map.get(base_key, meta.get("grade", "-"))
-        if normalize_grade_value(grade_val) == "-":
-            grade_val = fallback_grade_for_course(course)
-        grade_col.append(grade_val)
+        grade_col.append(grade_map.get(base_key, meta.get("grade", "-")))
 
     out["분반기준"] = section_used
     out["학년"] = grade_col
@@ -1739,8 +1512,8 @@ def fill_missing_grade(df: pd.DataFrame, grade_map: dict[str, str]) -> pd.DataFr
                 grade_val = norm_val
             else:
                 grade_val = fallback_grade_for_course(row.get("과목", row.get("과목명", "")))
-        filled.append(normalize_grade_value(grade_val))
-    out["학년"] = filled
+        filled.append(grade_val)
+    out["학년"] = [normalize_grade_value(v) for v in filled]
     return out
 
 
@@ -1761,103 +1534,6 @@ def dataframe_to_html_table(df: pd.DataFrame, highlight_cols: list[str] | None =
             parts.append(f"<td{cls}>{html.escape(val)}</td>")
         parts.append("</tr>")
     parts.append("</tbody></table></div>")
-    return "".join(parts)
-
-
-def integrated_calendar_grade_class(value) -> str:
-    grade = normalize_grade_value(value)
-    if grade == "1학년":
-        return "integrated-grade-1"
-    if grade == "2학년":
-        return "integrated-grade-2"
-    if grade == "3학년":
-        return "integrated-grade-3"
-    if grade == "4학년":
-        return "integrated-grade-4"
-    return "integrated-grade-x"
-
-
-def build_integrated_exam_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
-    row_height = 56
-    top_pad = 10
-    body_height = row_height * 22
-    day_col_pct = 20.0
-    day_inner_pad_pct = 0.45
-    df_w = df_src[df_src["주차"] == target_week].copy()
-    if df_w.empty:
-        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
-
-    df_w = df_w[df_w["요일번호"].isin([1, 2, 3, 4, 5])].copy()
-    if df_w.empty:
-        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 평일 시험이 없습니다.</div></div>"
-
-    df_w["표시종료슬롯"] = pd.to_numeric(df_w["표시종료슬롯"], errors="coerce").fillna(df_w["종료슬롯"])
-    group_counts = (
-        df_w.groupby(["요일번호", "시작슬롯"])["시험인덱스"]
-        .count()
-        .rename("same_count")
-        .reset_index()
-    )
-    df_w = df_w.merge(group_counts, on=["요일번호", "시작슬롯"], how="left")
-    df_w["same_idx"] = df_w.groupby(["요일번호", "시작슬롯"]).cumcount()
-
-    legend_items = [
-        ("1학년", "integrated-grade-1"),
-        ("2학년", "integrated-grade-2"),
-        ("3학년", "integrated-grade-3"),
-        ("4학년", "integrated-grade-4"),
-    ]
-    parts = ["<div class='integrated-cal-wrap'>", "<div class='integrated-cal-legend'>"]
-    for label, cls in legend_items:
-        parts.append(
-            "<div class='integrated-cal-legend-item'>"
-            f"<span class='integrated-cal-legend-swatch {cls}'></span>"
-            f"<span>{html.escape(label)}</span>"
-            "</div>"
-        )
-    parts.append("</div>")
-    parts.append("<div class='integrated-cal-shell'>")
-    parts.append("<div class='integrated-cal-header'>")
-    parts.append("<div class='integrated-cal-head-cell'>시간</div>")
-    for day in DAY_ORDER:
-        parts.append(f"<div class='integrated-cal-head-cell'>{html.escape(day)}</div>")
-    parts.append("</div>")
-    parts.append("<div class='integrated-cal-body'>")
-    parts.append(f"<div class='integrated-cal-times' style='height:{body_height + top_pad * 2}px'>")
-    for slot in range(0, 22):
-        top = top_pad + slot * row_height
-        parts.append(
-            f"<div class='integrated-cal-time' style='top:{top}px'>{html.escape(slot_to_time(slot))}</div>"
-        )
-    parts.append("</div>")
-    parts.append(f"<div class='integrated-cal-grid' style='height:{body_height + top_pad * 2}px'>")
-    for slot in range(0, 23):
-        top = top_pad + slot * row_height
-        parts.append(f"<div class='integrated-cal-hline' style='top:{top}px'></div>")
-
-    for _, row in df_w.sort_values(["요일번호", "시작슬롯", "과목명"]).iterrows():
-        day_idx = int(row["요일번호"]) - 1
-        same_count = max(1, int(row.get("same_count", 1)))
-        same_idx = int(row.get("same_idx", 0))
-        usable_pct = max(day_col_pct - (day_inner_pad_pct * 2), 4.0)
-        width_pct = usable_pct / same_count
-        left_pct = (day_idx * day_col_pct) + day_inner_pad_pct + (same_idx * width_pct)
-        top = top_pad + float(row["시작슬롯"]) * row_height + 3
-        height = max(40, (float(row["표시종료슬롯"]) - float(row["시작슬롯"])) * row_height - 6)
-        grade_cls = integrated_calendar_grade_class(row.get("학년", "-"))
-        title = html.escape(str(row.get("과목명", row.get("과목", ""))))
-        room = html.escape(str(row.get("강의실", "-")))
-        time_text = html.escape(f"{row.get('시작', '-') }~{row.get('종료', '-')}")
-        parts.append(
-            f"<div class='integrated-cal-event {grade_cls}' "
-            f"style='left:{left_pct:.6f}%; width:{max(width_pct - 0.25, 0.8):.6f}%; top:{top:.1f}px; height:{height:.1f}px;'>"
-            f"<div class='integrated-cal-title'>{title}</div>"
-            f"<div class='integrated-cal-sub'>{room}</div>"
-            f"<div class='integrated-cal-sub'>{time_text}</div>"
-            "</div>"
-        )
-
-    parts.append("</div></div></div>")
     return "".join(parts)
 
 
@@ -2042,13 +1718,14 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
     def esc(text) -> str:
         return str(text or "").replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
 
-    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.now().strftime("%Y%m%dT%H%M%S")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
+        "PRODID:-//INUTimetable//Exam Timetable//KO",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        "PRODID:-//INU Timetable//Exam Calendar//KR",
+        f"X-WR-CALNAME:INUTimetable {esc(sid)} 시험시간표",
     ]
 
     for _, r in df_student.sort_values(["start_dt", "과목명"]).iterrows():
@@ -2056,38 +1733,28 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
         end = pd.to_datetime(r["end_dt"]).strftime("%Y%m%dT%H%M%S")
         course = esc(r.get("과목명", r.get("과목", "")))
         room = esc(r.get("강의실", "-"))
-        uid = esc(f"{r.get('과목명', r.get('과목', 'exam'))}-{sid}-{start}@inutimetable")
+        week = esc(r.get("주차", "-"))
+        uid = f"inutimetable-{sid}-{int(r.get('시험인덱스', 0))}@inu"
+        desc = esc(
+            f"{week}주차 {r.get('요일', '')} {r.get('시작', '')}~{r.get('종료', '')} / "
+            f"강의실 {room} / {r.get('시험시간(분)', '')}분"
+        )
         lines.extend(
             [
                 "BEGIN:VEVENT",
                 f"UID:{uid}",
-                f"DTSTAMP:{now_utc}",
+                f"DTSTAMP:{now}",
                 f"DTSTART:{start}",
                 f"DTEND:{end}",
                 f"SUMMARY:{course} 시험",
-                f"LOCATION:{room}",
-                "DESCRIPTION:INUTimetable 시험시간표",
+                f"LOCATION:강의실 {room}",
+                f"DESCRIPTION:{desc}",
                 "END:VEVENT",
             ]
         )
 
     lines.append("END:VCALENDAR")
     return ("\r\n".join(lines) + "\r\n").encode("utf-8")
-
-
-def build_google_calendar_link(row: pd.Series) -> str:
-    title = f"{str(row.get('과목명', row.get('과목', '')))} 시험"
-    start = pd.to_datetime(row["start_dt"]).strftime("%Y%m%dT%H%M%S")
-    end = pd.to_datetime(row["end_dt"]).strftime("%Y%m%dT%H%M%S")
-    location = str(row.get("강의실", "-"))
-    details = "INUTimetable 시험시간표"
-    return (
-        "https://calendar.google.com/calendar/render?action=TEMPLATE"
-        f"&text={quote(title)}"
-        f"&dates={quote(f'{start}/{end}')}"
-        f"&location={quote(location)}"
-        f"&details={quote(details)}"
-    )
 
 
 # -------------------------------------------------
@@ -2114,6 +1781,7 @@ exam_df = add_change_columns(exam_df, orig_maps, grade_map)
 exam_df = fill_missing_grade(exam_df, grade_map)
 opt_summary_df = build_optimization_summary_df(payload)
 verify_df = build_verify_df(payload)
+decision_df = build_decision_df(payload, exam_df)
 report_images, report_dir = load_report_images()
 if report_dir is None:
     report_dir = BASE_DIR / "결과_리포트"
@@ -2123,38 +1791,12 @@ if not report_images:
 
 summary = payload.get("summary", {})
 
-if "manual_moves" not in st.session_state:
-    st.session_state.manual_moves = {}
-if "manual_move_history" not in st.session_state:
-    st.session_state.manual_move_history = []
-if "sim_selected_idx" not in st.session_state:
-    st.session_state.sim_selected_idx = None
-if "move_candidates" not in st.session_state:
-    st.session_state["move_candidates"] = []
-if "move_candidate_reasons" not in st.session_state:
-    st.session_state["move_candidate_reasons"] = {}
-if "move_candidate_meta" not in st.session_state:
-    st.session_state["move_candidate_meta"] = None
-
-base_exam_df = exam_df.copy()
-display_exam_df = apply_manual_moves(base_exam_df, st.session_state.manual_moves)
-display_exam_df["강의실목록"] = display_exam_df.apply(
-    lambda r: normalize_room_choice(r.get("강의실목록", r.get("강의실", []))),
-    axis=1,
-)
-display_exam_df["강의실"] = display_exam_df["강의실목록"].apply(format_room_choice)
-display_exam_df = add_change_columns(display_exam_df, orig_maps, grade_map)
-display_exam_df = fill_missing_grade(display_exam_df, grade_map)
-display_decision_df = build_decision_df(payload, display_exam_df)
-
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
 st.title("INUTimetable")
 st.caption("빌드: 5c1a2ac-final")
 st.caption("최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화")
-if st.session_state.manual_moves:
-    st.info(f"수동 변경 반영 중: {len(st.session_state.manual_moves)}건")
 
 with st.sidebar:
     st.header("메뉴")
@@ -2169,8 +1811,8 @@ with st.sidebar:
 
 # 전체 요약 카드
 g1, g2, g3, g4, g5 = st.columns(5)
-g1.metric("전체 시험 과목 수", int(display_exam_df["과목"].nunique()))
-used_rooms = set(r for rooms in display_exam_df["강의실목록"] for r in normalize_room_choice(rooms))
+g1.metric("전체 시험 과목 수", int(exam_df["과목"].nunique()))
+used_rooms = set(sum(exam_df["강의실목록"].tolist(), []))
 g2.metric("사용/후보 강의실 수", f"{len(used_rooms)}/{len(ROOM_ORDER)}")
 g3.metric("학생 충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
 g4.metric("분반 연속배정 위반", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
@@ -2208,7 +1850,7 @@ if menu == "학번별 조회":
         sid = st.session_state.searched_sid
         row_idx = find_student_row(df_is, sid)
         if row_idx is not None:
-            df_student = student_exam_df(display_exam_df, df_is, row_idx)
+            df_student = student_exam_df(exam_df, df_is, row_idx)
             df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
             df_student = fill_missing_grade(df_student, grade_map)
 
@@ -2261,24 +1903,11 @@ if menu == "학번별 조회":
                 mime="text/csv",
             )
             st.download_button(
-                "전체 시험 일정 ICS 다운로드",
+                "캘린더(.ics) 저장",
                 data=make_student_calendar_ics(df_student, sid),
                 file_name=f"student_{sid}_exam_calendar.ics",
                 mime="text/calendar",
             )
-            st.caption("iPhone에서는 ICS 파일이 미리보기로만 열릴 수 있습니다. 이 경우 왼쪽 아래 공유 버튼을 눌러 캘린더 앱 또는 Google Calendar로 열어주세요.")
-
-            st.markdown("#### Google Calendar에 추가")
-            for _, exam_row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
-                link_col, info_col = st.columns([1, 4])
-                with link_col:
-                    st.markdown(
-                        f"[Google Calendar에 추가]({build_google_calendar_link(exam_row)})"
-                    )
-                with info_col:
-                    st.markdown(
-                        f"{exam_row['과목명']} | {exam_row['요일']} {exam_row['시작']}~{exam_row['종료']} | 강의실 {exam_row['강의실']}"
-                    )
 
             # 해석 문구
             total_n = len(df_student)
@@ -2303,23 +1932,43 @@ if menu == "학번별 조회":
 elif menu == "전체 시간표":
     st.subheader("전체 시간표")
     st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
-    exam_df_view = display_exam_df.copy()
-    exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
 
-    selected_course_for_focus = str(st.session_state.get("overall_viz_course", "전체"))
-    if selected_course_for_focus != "전체":
-        focus_df_pre = exam_df_view[exam_df_view["과목명"].astype(str) == selected_course_for_focus].copy()
-        if not focus_df_pre.empty:
-            focus_df_pre = focus_df_pre.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-            focus_row_pre = focus_df_pre.iloc[0]
-            focus_sig = f"{selected_course_for_focus}|{int(focus_row_pre['주차'])}|{format_room_choice(focus_row_pre['강의실목록'])}|{str(focus_row_pre['학년정규화'])}"
-            if st.session_state.get("overall_course_focus_sig") != focus_sig:
-                st.session_state["overall_course_focus_sig"] = focus_sig
-                st.session_state["sim_week_view"] = f"{int(focus_row_pre['주차'])}주차"
-                st.session_state["overall_viz_room"] = str(normalize_room_choice(focus_row_pre["강의실목록"])[0])
-                st.session_state["overall_viz_grade"] = str(focus_row_pre["학년정규화"])
-    else:
-        st.session_state["overall_course_focus_sig"] = "전체"
+    if "manual_moves" not in st.session_state:
+        st.session_state.manual_moves = {}
+    if "manual_move_history" not in st.session_state:
+        st.session_state.manual_move_history = []
+    if "sim_selected_idx" not in st.session_state:
+        st.session_state.sim_selected_idx = None
+    if "move_candidates" not in st.session_state:
+        st.session_state["move_candidates"] = []
+    if "move_candidate_reasons" not in st.session_state:
+        st.session_state["move_candidate_reasons"] = {}
+    if "move_candidate_meta" not in st.session_state:
+        st.session_state["move_candidate_meta"] = None
+
+    def _apply_manual_moves(df_src: pd.DataFrame) -> pd.DataFrame:
+        out = df_src.copy()
+        for k, mv in st.session_state.manual_moves.items():
+            idx = int(k)
+            mask = out["시험인덱스"] == idx
+            if not mask.any():
+                continue
+            dur_min = int(out.loc[mask, "시험시간(분)"].iloc[0])
+            dur_slots = max(1, int((dur_min + 29) // 30))
+            out.loc[mask, "주차"] = int(mv["week"])
+            out.loc[mask, "요일번호"] = int(mv["day"])
+            out.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
+            out.loc[mask, "시작슬롯"] = int(mv["start_slot"])
+            out.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
+            out.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"]) + dur_slots)
+            out.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
+            out.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
+            out.loc[mask, "강의실"] = str(int(mv["room"]))
+            out.loc[mask, "강의실목록"] = [[int(mv["room"])] for _ in range(int(mask.sum()))]
+        return out
+
+    exam_df_view = _apply_manual_moves(exam_df)
+    exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -2331,26 +1980,18 @@ elif menu == "전체 시간표":
     target_grade = normalize_grade_value(viz_grade)
     with c4:
         course_src = exam_df_view.copy()
-        course_options = ["전체"] + sorted(exam_df_view["과목명"].astype(str).dropna().unique().tolist())
+        if viz_grade != "전체":
+            course_src = course_src[course_src["학년정규화"] == target_grade]
+        course_options = ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist())
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
-    active_week_num = sim_week_num
-    active_room = int(viz_room)
-    if viz_course != "전체":
-        focus_df = course_src[course_src["과목명"].astype(str) == str(viz_course)].copy()
-        if not focus_df.empty:
-            focus_df = focus_df.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-            focus_row = focus_df.iloc[0]
-            active_week_num = int(focus_row["주차"])
-            active_room = int(normalize_room_choice(focus_row["강의실목록"])[0])
-
     current_filter_sig = f"{sim_week_num}|{viz_room}|{viz_grade}|{viz_course}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
         st.session_state.sim_filter_sig = current_filter_sig
         st.session_state.sim_selected_idx = None
     calendar_src = exam_df_view.copy()
-    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(active_room) in set(xs))]
+    calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     if viz_grade != "전체":
         calendar_src = calendar_src[calendar_src["학년정규화"] == target_grade]
     if viz_course != "전체":
@@ -2361,24 +2002,19 @@ elif menu == "전체 시간표":
     with left_col:
         st.markdown("##### 현재 전체 시간표")
         # 시간표는 한 개만 보여준다.
-        st.markdown(build_calendar_html(calendar_src, active_week_num, clickable=False), unsafe_allow_html=True)
+        st.markdown(build_calendar_html(calendar_src, sim_week_num, clickable=False), unsafe_allow_html=True)
         with st.expander("참고용 이미지 보기", expanded=False):
-            selected_room_path_overall = report_dir / f"page_room_{active_room}.png" if report_dir is not None else None
+            selected_room_path_overall = report_dir / f"page_room_{viz_room}.png" if report_dir is not None else None
             if selected_room_path_overall is not None and selected_room_path_overall.exists():
                 st.image(str(selected_room_path_overall), use_container_width=True)
-                st.caption(f"강의실 {active_room} 시각화 파일")
+                st.caption(f"강의실 {viz_room} 시각화 파일")
 
-    visible_week = calendar_src[calendar_src["주차"] == active_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-    selectable_week = exam_df_view[exam_df_view["주차"] == active_week_num].copy()
+    visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    selectable_week = exam_df_view[exam_df_view["주차"] == sim_week_num].copy()
     if viz_grade != "전체":
         selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
     if viz_course != "전체":
         selectable_week = selectable_week[selectable_week["과목명"].astype(str) == str(viz_course)]
-    persisted_sel_idx = st.session_state.get("sim_selected_idx")
-    if persisted_sel_idx is not None and int(persisted_sel_idx) not in set(selectable_week["시험인덱스"].tolist()):
-        extra_row = exam_df_view[exam_df_view["시험인덱스"] == int(persisted_sel_idx)].copy()
-        if not extra_row.empty:
-            selectable_week = pd.concat([selectable_week, extra_row], ignore_index=True).drop_duplicates(subset=["시험인덱스"])
     selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
     sel_idx: int | None = None
@@ -2389,7 +2025,12 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        st.caption("운영상 필수 제약을 만족하는 이동 후보만 표시합니다.")
+        st.caption("완화 모드에서는 운영상 필수 제약만 강제하고, 나머지는 경고로 표시합니다.")
+        st.caption(
+            f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
+            f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
+        )
+        mode = st.radio("후보 표시 모드", ["Relaxed", "Strict"], index=0, horizontal=True, key="sim_mode")
         if selectable_week.empty:
             st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
@@ -2415,6 +2056,8 @@ elif menu == "전체 시간표":
 
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
+                "week": int(sim_week_num),
+                "mode": str(mode),
             }
             if st.session_state.get("move_candidate_meta") != current_candidate_context:
                 st.session_state["move_candidates"] = []
@@ -2425,94 +2068,40 @@ elif menu == "전체 시간표":
                 1,
                 int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
             )
-            target_row = exam_df_view[exam_df_view["시험인덱스"] == sel_idx].copy()
-            if target_row.empty:
-                st.warning("선택한 과목의 원본 행을 찾지 못했습니다.")
-            selected_base_key = normalize_name(sel_row.get("기준과목", sel_row.get("과목", "")))
-            group_df = exam_df_view[
-                exam_df_view["기준과목"].astype(str).apply(normalize_name) == selected_base_key
-            ].copy()
-            group_count = len(group_df)
-            is_bundle = group_count >= 2
             enrollment = len(student_sets.get(int(sel_idx), set()))
             need_room = max(1, len(sel_row["강의실목록"]))
-            weeks_to_search = [int(sel_row["주차"])]
+            allowed_weeks = [int(sim_week_num)]
             if "fixed_week" in sel_row and pd.notna(sel_row.get("fixed_week")):
-                weeks_to_search = [int(sel_row["fixed_week"])]
-            if not weeks_to_search:
-                weeks_to_search = [int(sel_row["주차"])]
+                allowed_weeks = [int(sel_row["fixed_week"])]
+            elif "주차" in sel_row:
+                allowed_weeks = [int(sel_row["주차"])]
 
-            current_start_slot = int(sel_row["시작슬롯"])
-            start_slots_to_search = [
-                s for s in range(current_start_slot - 2, current_start_slot + 3)
-                if 0 <= s <= 18
-            ]
-            if not start_slots_to_search:
-                start_slots_to_search = list(range(0, 19))
-
-            current_rooms = [int(x) for x in sel_row["강의실목록"]]
-            nearby_room_candidates: list[int] = []
-            for room in current_rooms:
-                if room not in ROOM_ORDER:
-                    continue
-                ridx = ROOM_ORDER.index(room)
-                for pos in range(max(0, ridx - 2), min(len(ROOM_ORDER), ridx + 3)):
-                    nearby_room_candidates.append(int(ROOM_ORDER[pos]))
-            nearby_room_candidates = sorted(set(nearby_room_candidates)) or current_rooms or ROOM_ORDER
             room_combo_candidates = []
-            for combo in combinations(nearby_room_candidates, need_room):
+            for combo in combinations(ROOM_ORDER, need_room):
                 total_cap = sum(ROOM_CAP[int(r)] for r in combo)
                 if total_cap >= enrollment:
                     room_combo_candidates.append(tuple(int(r) for r in combo))
             if not room_combo_candidates:
-                current_room_count = max(1, len(sel_row["강의실목록"]))
-                room_combo_candidates = [
-                    tuple(int(r) for r in combo)
-                    for combo in combinations(nearby_room_candidates, current_room_count)
-                ]
+                room_combo_candidates = [tuple(int(r) for r in sel_row["강의실목록"])]
 
-            debug_counts = {
-                "need_room_mismatch": 0,
-                "capacity_fail": 0,
-                "room_overlap_fail": 0,
-                "student_conflict_fail": 0,
-                "section_consecutive_fail": 0,
-                "fixed_week_fail": 0,
-                "feasible_count": 0,
-                "selected_exam_idx": int(sel_idx),
-                "target_row_empty": bool(target_row.empty),
-                "selected_base_key": selected_base_key,
-                "group_row_count": int(group_count),
-                "is_bundle": bool(is_bundle),
-                "weeks_to_search": weeks_to_search,
-                "start_slots_to_search_count": len(start_slots_to_search),
-                "room_combos_count": len(room_combo_candidates),
-                "raw_candidate_count": 0,
+            blocked_counts = {
+                "주차 고정 위반": 0,
+                "필요강의실수/수용인원 부족": 0,
+                "강의실 중복": 0,
+                "학생 동시시험": 0,
+                "분반 연속배정 불가": 0,
+                "최종 가능 후보": 0,
             }
-            scorer = score_move_impact
+            scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
                 try:
-                    if is_bundle:
-                        debug_counts["section_consecutive_fail"] += 1
-                        raise StopIteration
-                    for week in weeks_to_search:
+                    for week in allowed_weeks:
                         for dnum in [1, 2, 3, 4, 5]:
-                            for st_slot in start_slots_to_search:
+                            for st_slot in range(0, 19):
                                 if st_slot + dur_slots > 22:
                                     continue
                                 for room_combo in room_combo_candidates:
-                                    debug_counts["raw_candidate_count"] += 1
-                                    if debug_counts["raw_candidate_count"] > 500:
-                                        st.warning("raw_candidate_count가 500개를 넘어 탐색을 중단합니다.")
-                                        raise StopIteration
-                                    if len(room_combo) != need_room:
-                                        debug_counts["need_room_mismatch"] += 1
-                                        continue
-                                    total_cap = sum(ROOM_CAP[int(r)] for r in room_combo)
-                                    if total_cap < enrollment:
-                                        debug_counts["capacity_fail"] += 1
-                                        continue
                                     out_eval = scorer(
                                         exam_df=exam_df_view,
                                         target_idx=sel_idx,
@@ -2527,18 +2116,18 @@ elif menu == "전체 시간표":
                                         warning_items = []
                                         orig_day = int(sel_row["요일번호"])
                                         orig_start = int(sel_row["시작슬롯"])
-                                        old_key = (orig_day, orig_start)
-                                        new_key = (int(dnum), int(st_slot))
                                         if abs(int(dnum) - orig_day) > D_MAX:
                                             warning_items.append("D_MAX 초과")
                                         if abs(int(st_slot) - orig_start) > T_MAX:
                                             warning_items.append("T_MAX 초과")
-                                        if old_key != new_key:
-                                            warning_items.append("시간 변경")
+                                        if int(week) != int(sel_row["주차"]):
+                                            warning_items.append("주차 변경")
+                                        if int(st_slot) != int(orig_start):
+                                            warning_items.append("원래 시간 변경")
                                         if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
-                                            warning_items.append("강의실 변경")
-                                        if int(out_eval.get("daily3_increase", 0)) > 0 or int(out_eval.get("daily4_increase", 0)) > 0:
-                                            warning_items.append("하루 시험 수 증가")
+                                            warning_items.append("원래 강의실 변경")
+                                        if int(out_eval.get("daily3_increase", 0)) > 0:
+                                            warning_items.append("하루 3시험 가능성")
                                         if float(out_eval.get("objective_delta", 0.0)) > 0:
                                             warning_items.append("목적함수 증가")
 
@@ -2560,150 +2149,83 @@ elif menu == "전체 시간표":
                                                 "slot": int(st_slot),
                                             }
                                         )
-                                        if len(move_candidates) >= 20:
-                                            raise StopIteration
                                     else:
                                         reason = str(out_eval.get("reason", ""))
                                         if "강의실 중복" in reason:
-                                            debug_counts["room_overlap_fail"] += 1
+                                            blocked_counts["강의실 중복"] += 1
                                         elif "학생 동시시험" in reason:
-                                            debug_counts["student_conflict_fail"] += 1
+                                            blocked_counts["학생 동시시험"] += 1
                     move_candidates = sorted(
                         move_candidates,
                         key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
-                    )[:20]
-                except StopIteration:
-                    pass
+                    )[:30]
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
 
-                debug_counts["feasible_count"] = len(move_candidates)
+                blocked_counts["최종 가능 후보"] = len(move_candidates)
                 st.session_state["move_candidates"] = move_candidates
-                st.session_state["move_candidate_reasons"] = debug_counts
+                st.session_state["move_candidate_reasons"] = blocked_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
+                st.rerun()
+
             stored_candidates = st.session_state.get("move_candidates", [])
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
             if not stored_candidates:
                 if stored_reasons:
-                    st.info("현재 제약 조건에서 가능한 이동 후보가 없습니다.")
+                    st.warning("가능한 이동 후보가 없습니다.")
+                    for label, count in stored_reasons.items():
+                        st.write(f"- {label}: {int(count)}개")
             else:
                 cand_df = pd.DataFrame(stored_candidates)
-                current_room_text = format_room_choice(sel_row["강의실목록"])
-                display_cand_df = cand_df[
-                    ~(
-                        (cand_df["week"].astype(int) == int(sel_row["주차"]))
-                        & (cand_df["dnum"].astype(int) == int(sel_row["요일번호"]))
-                        & (cand_df["slot"].astype(int) == int(sel_row["시작슬롯"]))
-                        & (cand_df["강의실"].astype(str) == current_room_text)
-                    )
+                time_opts = (
+                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
+                    .drop_duplicates()
+                    .tolist()
+                )
+                tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                cand_time_df = cand_df[
+                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}" == tsel, axis=1)
                 ].copy()
-                if display_cand_df.empty:
-                    st.info("현재 조건에서 실질적인 이동 후보가 없습니다.")
-                else:
-                    display_cand_df["warning_count"] = display_cand_df["경고"].apply(lambda x: 0 if str(x).strip() == "-" else len([p for p in str(x).split(",") if p.strip()]))
-                    time_summary = (
-                        display_cand_df.groupby(["요일", "시작", "종료"], as_index=False)["warning_count"]
-                        .min()
-                        .sort_values(["요일", "시작"])
-                    )
-                    time_summary["time_label"] = time_summary.apply(
-                        lambda r: f"{r['요일']} {r['시작']}~{r['종료']} (경고 {int(r['warning_count'])}개)",
-                        axis=1,
-                    )
-                    time_opts = time_summary["time_label"].tolist()
-                    tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
-                    selected_time_row = time_summary[time_summary["time_label"] == tsel].iloc[0]
-                    cand_time_df = display_cand_df[
-                        (display_cand_df["요일"] == selected_time_row["요일"])
-                        & (display_cand_df["시작"] == selected_time_row["시작"])
-                        & (display_cand_df["종료"] == selected_time_row["종료"])
-                    ].copy()
-                    room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
-                    rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
-                    cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
-                    chosen_row = cand_choice_df.iloc[0]
-                    out = scorer(
-                        exam_df=exam_df_view,
-                        target_idx=sel_idx,
-                        new_week=int(chosen_row["week"]),
-                        new_day=int(chosen_row["dnum"]),
-                        new_start=int(chosen_row["slot"]),
-                        new_room=chosen_row["room_combo"],
-                        student_sets=student_sets,
-                        summary=summary,
-                    )
-                    tday = str(chosen_row["요일"])
-                    tstart = str(chosen_row["시작"])
-                    sim_day_no = int(chosen_row["dnum"])
-                    sim_start_slot = int(chosen_row["slot"])
-                    sim_room_choice = list(chosen_row["room_combo"])
-                    current_old_key = (int(sel_row["요일번호"]), int(sel_row["시작슬롯"]))
-                    current_new_key = (int(sim_day_no), int(sim_start_slot))
+                room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
+                rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
+                cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
+                chosen_row = cand_choice_df.iloc[0]
+                out = scorer(
+                    exam_df=exam_df_view,
+                    target_idx=sel_idx,
+                    new_week=int(chosen_row["week"]),
+                    new_day=int(chosen_row["dnum"]),
+                    new_start=int(chosen_row["slot"]),
+                    new_room=chosen_row["room_combo"],
+                    student_sets=student_sets,
+                    summary=summary,
+                )
+                tday = str(chosen_row["요일"])
+                tstart = str(chosen_row["시작"])
+                sim_day_no = int(chosen_row["dnum"])
+                sim_start_slot = int(chosen_row["slot"])
+                sim_room_choice = list(chosen_row["room_combo"])
 
-                    st.markdown("#### 선택 후보 요약")
-                    st.markdown(
-                        (
-                            "<div class='candidate-card'>"
-                            "<div class='candidate-card-title'>가능 후보</div>"
-                            f"<div class='candidate-card-main'>{tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)}</div>"
-                            f"<div class='candidate-card-sub'>강의실: {chosen_row['강의실']}</div>"
-                            "</div>"
-                        ),
-                        unsafe_allow_html=True,
-                    )
-                    student_conflict = int(out.get("student_conflict_count", 0))
-                    time_changed = current_old_key != current_new_key
-                    room_changed = set(normalize_room_choice(sim_room_choice)) != set(normalize_room_choice(sel_row["강의실목록"]))
-                    daily_inc = int(out.get("daily3_increase", 0)) > 0 or int(out.get("daily4_increase", 0)) > 0
-                    dmax_tmax_warn = "D_MAX 초과" in str(chosen_row["경고"]) or "T_MAX 초과" in str(chosen_row["경고"])
-                    obj_delta = float(out.get("objective_delta", 0.0))
-                    badge_parts = [
-                        ("warn-green" if student_conflict == 0 else "warn-red", f"학생 충돌 {'없음' if student_conflict == 0 else f'{student_conflict}명'}"),
-                        ("warn-yellow" if room_changed else "warn-green", f"강의실 변경 {'발생' if room_changed else '없음'}"),
-                        ("warn-yellow" if time_changed else "warn-green", f"시간 변경 {'발생' if time_changed else '없음'}"),
-                        ("warn-red" if daily_inc else "warn-green", f"하루 시험 수 증가 {'있음' if daily_inc else '없음'}"),
-                        ("warn-orange" if dmax_tmax_warn else "warn-green", f"D_MAX/T_MAX {'초과' if dmax_tmax_warn else '정상'}"),
-                        ("warn-yellow" if obj_delta > 0 else "warn-green", f"목적함수 {obj_delta:+.4f}"),
-                    ]
-                    badge_html = "".join([f"<span class='warn-badge {cls}'>{label}</span>" for cls, label in badge_parts])
-                    st.markdown(f"<div class='warn-badge-row'>{badge_html}</div>", unsafe_allow_html=True)
-                    st.info(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
-                    st.info(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
-                    st.caption("다른 후보도 선택해 비교할 수 있습니다.")
+                st.markdown("#### 선택 후보 요약")
+                st.write(f"변경 전: {sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / {sel_row['강의실']}")
+                st.write(f"변경 후: {tday} {tstart}~{slot_to_time(sim_start_slot + dur_slots)} / {chosen_row['강의실']}")
+                st.write(f"영향학생 수: {int(out.get('affected_students', 0))}명")
+                st.write(f"학생충돌 수: {int(out.get('student_conflict_count', 0))}명")
+                st.write(f"하루 3시험 증가: {int(out.get('daily3_increase', 0)):+d}")
+                st.write(f"하루 4시험 증가: {int(out.get('daily4_increase', 0)):+d}")
+                st.write(f"시간 변경 여부: {'예' if int(out.get('time_move_delta', 0)) != 0 else '아니오'}")
+                st.write(f"강의실 변경 여부: {'예' if int(out.get('room_change_delta', 0)) != 0 else '아니오'}")
+                st.write(f"목적함수 변화량: {float(out.get('objective_delta', 0.0)):+.4f}")
+                st.write(f"경고 항목: {chosen_row['경고']}")
 
-                    st.markdown("#### 추천 후보 TOP3")
-                    top3 = display_cand_df.copy()
-                    top3["daily_exam_increase"] = (
-                        pd.to_numeric(top3["하루3개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
-                        + pd.to_numeric(top3["하루4개증가"], errors="coerce").fillna(0).astype(int).clip(lower=0)
+                st.markdown("#### 추천 후보 TOP3")
+                top3 = cand_df.head(3)
+                for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
+                    st.write(
+                        f"{rank}순위: {rr['요일']} {rr['시작']} / {int(rr['강의실'])}호 | "
+                        f"Δ {float(rr['목적함수변화']):+.2f} | 학생충돌 {int(rr['학생충돌수'])}명"
                     )
-                    top3["time_changed"] = top3.apply(
-                        lambda rr: 1 if (int(rr["dnum"]), int(rr["slot"])) != (int(sel_row["요일번호"]), int(sel_row["시작슬롯"])) else 0,
-                        axis=1,
-                    )
-                    top3["room_changed"] = top3["room_combo"].apply(
-                        lambda rr: 1 if set(normalize_room_choice(rr)) != set(normalize_room_choice(sel_row["강의실목록"])) else 0
-                    )
-                    top3["distance"] = top3.apply(
-                        lambda rr: abs(int(rr["dnum"]) - int(sel_row["요일번호"])) + abs(int(rr["slot"]) - int(sel_row["시작슬롯"])),
-                        axis=1,
-                    )
-                    top3 = top3.sort_values(
-                        by=["목적함수변화", "daily_exam_increase", "time_changed", "room_changed", "distance"],
-                        ascending=[True, True, True, True, True],
-                    ).head(3)
-                    if top3.empty:
-                        st.info("현재 조건에서 실질적인 이동 후보가 없습니다.")
-                    else:
-                        for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
-                            st.write(
-                                f"추천 {rank}위: {rr['요일']} {rr['시작']}~{rr['종료']} | "
-                                f"강의실 {rr['강의실']} | Δ {float(rr['목적함수변화']):+.2f} | "
-                                f"하루 시험 수 변화 {int(rr['daily_exam_increase'])} | "
-                                f"시간 변경 {'예' if int(rr['time_changed']) else '아니오'} | "
-                                f"강의실 변경 {'예' if int(rr['room_changed']) else '아니오'}"
-                            )
 
         if st.session_state.manual_moves:
             rows = []
@@ -2714,7 +2236,7 @@ elif menu == "전체 시간표":
                         "주차": int(mv["week"]),
                         "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
                         "시작": slot_to_time(int(mv["start_slot"])),
-                        "강의실": format_room_choice(mv.get("room", mv.get("강의실", []))),
+                        "강의실": int(mv["room"]),
                     }
                 )
             sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
@@ -2726,27 +2248,12 @@ elif menu == "전체 시간표":
                 mime="text/csv",
             )
 
-    st.markdown("#### 전체 시험 상세 표")
-    whole_table_cols = [
-        "과목명", "학년", "주차", "요일", "날짜", "시작", "종료", "시험시간(분)", "강의실",
-    ]
-    whole_table_df = exam_df_view.copy()
-    for col in whole_table_cols:
-        if col not in whole_table_df.columns:
-            whole_table_df[col] = "-"
-    whole_table_df = whole_table_df[whole_table_cols].sort_values(["주차", "요일", "시작", "과목명"]).reset_index(drop=True)
-    st.markdown(
-        dataframe_to_html_table(whole_table_df),
-        unsafe_allow_html=True,
-    )
-
     button_row = st.columns(3)
     with button_row[0]:
         if st.button(
             "변경 완료",
             key="apply_move_btn",
             disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or not st.session_state.get("move_candidates", []),
-            type="primary",
         ):
             prev_state = st.session_state.manual_moves.get(str(sel_idx))
             st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
@@ -2754,11 +2261,11 @@ elif menu == "전체 시간표":
                 "week": int(chosen_row["week"]),
                 "day": int(sim_day_no),
                 "start_slot": int(sim_start_slot),
-                "room": normalize_room_choice(sim_room_choice),
+                "room": int(sim_room_choice[0]),
             }
             st.rerun()
     with button_row[1]:
-        if st.button("이전", key="undo_last_move_btn", type="secondary"):
+        if st.button("이전", key="undo_last_move_btn"):
             if st.session_state.manual_move_history:
                 item = st.session_state.manual_move_history.pop()
                 idx_key = str(item["idx"])
@@ -2769,7 +2276,7 @@ elif menu == "전체 시간표":
                     st.session_state.manual_moves[idx_key] = prev
                 st.rerun()
     with button_row[2]:
-        if st.button("초기화", key="reset_to_gurobi_btn", type="secondary"):
+        if st.button("초기화", key="reset_to_gurobi_btn"):
             st.session_state.manual_moves = {}
             st.session_state.manual_move_history = []
             st.session_state.sim_selected_idx = None
@@ -2780,7 +2287,7 @@ elif menu == "전체 시간표":
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
-    df_ch = display_exam_df.copy().sort_values(["변경상태", "주차", "요일번호", "시작슬롯"]) 
+    df_ch = exam_df.copy().sort_values(["변경상태", "주차", "요일번호", "시작슬롯"]) 
     changed_only = st.checkbox("변경된 과목만 보기", value=False)
     if changed_only:
         df_ch = df_ch[df_ch["변경상태"] != "유지"]
@@ -2808,8 +2315,6 @@ elif menu == "변경사항 확인":
 
 elif menu == "최적화 결과":
     st.subheader("구로비 최적화 결과")
-    if st.session_state.manual_moves:
-        st.info("수동 변경 반영 중입니다. 아래 결정변수 결과표는 수동 변경을 반영한 표시용 결과이며, 목적함수값과 제약식 위반표는 원본 최적화 결과입니다.")
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
@@ -2827,10 +2332,10 @@ elif menu == "최적화 결과":
     st.dataframe(verify_df, use_container_width=True, hide_index=True)
 
     st.markdown("#### 결정변수 결과")
-    st.dataframe(display_decision_df, use_container_width=True, hide_index=True)
+    st.dataframe(decision_df, use_container_width=True, hide_index=True)
     st.download_button(
         "결정변수 결과 다운로드(CSV)",
-        data=display_decision_df.to_csv(index=False).encode("utf-8-sig"),
+        data=decision_df.to_csv(index=False).encode("utf-8-sig"),
         file_name="optimized_decision_table.csv",
         mime="text/csv",
     )
@@ -2844,20 +2349,6 @@ elif menu == "최적화 결과":
                 file_name=pdf_path.name,
                 mime="application/pdf",
             )
-
-    st.markdown("#### 전체 캘린더 보기")
-    st.caption("manual move를 포함한 현재 전체 시험 배치를 주차별 통합 캘린더로 확인할 수 있습니다.")
-    week_values = [int(w) for w in sorted(display_exam_df["주차"].dropna().astype(int).unique().tolist()) if int(w) in [7, 8, 9]]
-    if not week_values:
-        st.info("표시할 전체 캘린더 데이터가 없습니다.")
-    else:
-        calendar_tabs = st.tabs([f"Week {w}" for w in week_values])
-        for tab, week_value in zip(calendar_tabs, week_values):
-            with tab:
-                st.markdown(
-                    build_integrated_exam_calendar_html(display_exam_df, week_value),
-                    unsafe_allow_html=True,
-                )
 
 
 
