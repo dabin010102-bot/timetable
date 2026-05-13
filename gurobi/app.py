@@ -335,6 +335,127 @@ st.markdown(
     .warn-yellow {background:#fef3c7; color:#92400e !important; border:1px solid #fcd34d;}
     .warn-orange {background:#ffedd5; color:#9a3412 !important; border:1px solid #fdba74;}
     .warn-red {background:#fee2e2; color:#991b1b !important; border:1px solid #fca5a5;}
+    .integrated-cal-wrap {
+      overflow-x:auto;
+      padding-bottom:10px;
+      margin:10px 0 18px 0;
+    }
+    .integrated-cal-legend {
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin:0 0 10px 0;
+      font-size:13px;
+      font-weight:700;
+      color:#334155 !important;
+    }
+    .integrated-cal-legend-item {
+      display:flex;
+      align-items:center;
+      gap:6px;
+    }
+    .integrated-cal-legend-swatch {
+      width:14px;
+      height:14px;
+      border-radius:4px;
+      border:1px solid rgba(15,23,42,.12);
+      flex:0 0 auto;
+    }
+    .integrated-cal-shell {
+      min-width:1180px;
+      border:1px solid #d8e0ea;
+      border-radius:16px;
+      background:#ffffff;
+      overflow:hidden;
+      box-shadow:0 4px 18px rgba(15,23,42,.06);
+    }
+    .integrated-cal-header {
+      display:grid;
+      grid-template-columns: 78px repeat(5, 1fr);
+      background:#eef5ff;
+      border-bottom:1px solid #d8e0ea;
+    }
+    .integrated-cal-head-cell {
+      padding:12px 8px;
+      text-align:center;
+      font-weight:900;
+      color:#0f172a !important;
+      border-right:1px solid #d8e0ea;
+    }
+    .integrated-cal-head-cell:last-child {border-right:none;}
+    .integrated-cal-body {
+      position:relative;
+      display:grid;
+      grid-template-columns: 78px 1fr;
+      background:
+        linear-gradient(to right, transparent 0, transparent 78px, #d8e0ea 78px, #d8e0ea 79px, transparent 79px),
+        linear-gradient(to right, transparent calc(20% + 78px), #e2e8f0 calc(20% + 78px), #e2e8f0 calc(20% + 79px), transparent calc(20% + 79px)),
+        linear-gradient(to right, transparent calc(40% + 78px), #e2e8f0 calc(40% + 78px), #e2e8f0 calc(40% + 79px), transparent calc(40% + 79px)),
+        linear-gradient(to right, transparent calc(60% + 78px), #e2e8f0 calc(60% + 78px), #e2e8f0 calc(60% + 79px), transparent calc(60% + 79px)),
+        linear-gradient(to right, transparent calc(80% + 78px), #e2e8f0 calc(80% + 78px), #e2e8f0 calc(80% + 79px), transparent calc(80% + 79px));
+      background-color:#ffffff;
+    }
+    .integrated-cal-times {
+      position:relative;
+      z-index:2;
+      background:#f8fbff;
+      border-right:1px solid #d8e0ea;
+    }
+    .integrated-cal-time {
+      position:absolute;
+      left:0;
+      width:100%;
+      transform:translateY(-50%);
+      text-align:center;
+      font-size:12px;
+      font-weight:800;
+      color:#334155 !important;
+    }
+    .integrated-cal-grid {
+      position:relative;
+      z-index:1;
+    }
+    .integrated-cal-hline {
+      position:absolute;
+      left:0;
+      right:0;
+      border-top:1px solid #edf2f7;
+    }
+    .integrated-cal-event {
+      position:absolute;
+      border-radius:14px;
+      padding:10px 10px 9px 10px;
+      box-sizing:border-box;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:flex-start;
+      text-align:left;
+      overflow:hidden;
+      word-break:keep-all;
+      overflow-wrap:anywhere;
+      line-height:1.25;
+      border:1px solid rgba(15,23,42,.10);
+      box-shadow:0 6px 14px rgba(15,23,42,.10);
+    }
+    .integrated-cal-title {
+      width:100%;
+      font-size:13px;
+      font-weight:900;
+      color:#0f172a !important;
+    }
+    .integrated-cal-sub {
+      width:100%;
+      margin-top:4px;
+      font-size:12px;
+      font-weight:700;
+      color:#334155 !important;
+    }
+    .integrated-grade-1 {background:#dbeafe;}
+    .integrated-grade-2 {background:#dcfce7;}
+    .integrated-grade-3 {background:#ffedd5;}
+    .integrated-grade-4 {background:#fee2e2;}
+    .integrated-grade-x {background:#e5e7eb;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -1642,6 +1763,100 @@ def dataframe_to_html_table(df: pd.DataFrame, highlight_cols: list[str] | None =
     return "".join(parts)
 
 
+def integrated_calendar_grade_class(value) -> str:
+    grade = normalize_grade_value(value)
+    if grade == "1학년":
+        return "integrated-grade-1"
+    if grade == "2학년":
+        return "integrated-grade-2"
+    if grade == "3학년":
+        return "integrated-grade-3"
+    if grade == "4학년":
+        return "integrated-grade-4"
+    return "integrated-grade-x"
+
+
+def build_integrated_exam_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
+    row_height = 56
+    top_pad = 10
+    body_height = row_height * 22
+    df_w = df_src[df_src["주차"] == target_week].copy()
+    if df_w.empty:
+        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 시험이 없습니다.</div></div>"
+
+    df_w = df_w[df_w["요일번호"].isin([1, 2, 3, 4, 5])].copy()
+    if df_w.empty:
+        return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 평일 시험이 없습니다.</div></div>"
+
+    df_w["표시종료슬롯"] = pd.to_numeric(df_w["표시종료슬롯"], errors="coerce").fillna(df_w["종료슬롯"])
+    group_counts = (
+        df_w.groupby(["요일번호", "시작슬롯"])["시험인덱스"]
+        .count()
+        .rename("same_count")
+        .reset_index()
+    )
+    df_w = df_w.merge(group_counts, on=["요일번호", "시작슬롯"], how="left")
+    df_w["same_idx"] = df_w.groupby(["요일번호", "시작슬롯"]).cumcount()
+
+    legend_items = [
+        ("1학년", "integrated-grade-1"),
+        ("2학년", "integrated-grade-2"),
+        ("3학년", "integrated-grade-3"),
+        ("4학년", "integrated-grade-4"),
+    ]
+    parts = ["<div class='integrated-cal-wrap'>", "<div class='integrated-cal-legend'>"]
+    for label, cls in legend_items:
+        parts.append(
+            "<div class='integrated-cal-legend-item'>"
+            f"<span class='integrated-cal-legend-swatch {cls}'></span>"
+            f"<span>{html.escape(label)}</span>"
+            "</div>"
+        )
+    parts.append("</div>")
+    parts.append("<div class='integrated-cal-shell'>")
+    parts.append("<div class='integrated-cal-header'>")
+    parts.append("<div class='integrated-cal-head-cell'>시간</div>")
+    for day in DAY_ORDER:
+        parts.append(f"<div class='integrated-cal-head-cell'>{html.escape(day)}</div>")
+    parts.append("</div>")
+    parts.append("<div class='integrated-cal-body'>")
+    parts.append(f"<div class='integrated-cal-times' style='height:{body_height + top_pad * 2}px'>")
+    for slot in range(0, 22):
+        top = top_pad + slot * row_height
+        parts.append(
+            f"<div class='integrated-cal-time' style='top:{top}px'>{html.escape(slot_to_time(slot))}</div>"
+        )
+    parts.append("</div>")
+    parts.append(f"<div class='integrated-cal-grid' style='height:{body_height + top_pad * 2}px'>")
+    for slot in range(0, 23):
+        top = top_pad + slot * row_height
+        parts.append(f"<div class='integrated-cal-hline' style='top:{top}px'></div>")
+
+    for _, row in df_w.sort_values(["요일번호", "시작슬롯", "과목명"]).iterrows():
+        day_idx = int(row["요일번호"]) - 1
+        same_count = max(1, int(row.get("same_count", 1)))
+        same_idx = int(row.get("same_idx", 0))
+        left_pct = day_idx * 20 + (20 / same_count) * same_idx
+        width_pct = 20 / same_count
+        top = top_pad + float(row["시작슬롯"]) * row_height + 3
+        height = max(40, (float(row["표시종료슬롯"]) - float(row["시작슬롯"])) * row_height - 6)
+        grade_cls = integrated_calendar_grade_class(row.get("학년", "-"))
+        title = html.escape(str(row.get("과목명", row.get("과목", ""))))
+        room = html.escape(str(row.get("강의실", "-")))
+        time_text = html.escape(f"{row.get('시작', '-') }~{row.get('종료', '-')}")
+        parts.append(
+            f"<div class='integrated-cal-event {grade_cls}' "
+            f"style='left:calc({left_pct:.6f}% + 4px); width:calc({width_pct:.6f}% - 8px); top:{top:.1f}px; height:{height:.1f}px;'>"
+            f"<div class='integrated-cal-title'>{title}</div>"
+            f"<div class='integrated-cal-sub'>{room}</div>"
+            f"<div class='integrated-cal-sub'>{time_text}</div>"
+            "</div>"
+        )
+
+    parts.append("</div></div></div>")
+    return "".join(parts)
+
+
 def render_calendar_grid(df_student: pd.DataFrame, target_week: int):
     st.markdown(f"#### {target_week}주차 캘린더형 시험시간표")
     table_html = build_calendar_html(df_student, target_week)
@@ -2625,6 +2840,20 @@ elif menu == "최적화 결과":
                 file_name=pdf_path.name,
                 mime="application/pdf",
             )
+
+    st.markdown("#### 전체 캘린더 보기")
+    st.caption("manual move를 포함한 현재 전체 시험 배치를 주차별 통합 캘린더로 확인할 수 있습니다.")
+    week_values = [int(w) for w in sorted(display_exam_df["주차"].dropna().astype(int).unique().tolist()) if int(w) in [7, 8, 9]]
+    if not week_values:
+        st.info("표시할 전체 캘린더 데이터가 없습니다.")
+    else:
+        calendar_tabs = st.tabs([f"Week {w}" for w in week_values])
+        for tab, week_value in zip(calendar_tabs, week_values):
+            with tab:
+                st.markdown(
+                    build_integrated_exam_calendar_html(display_exam_df, week_value),
+                    unsafe_allow_html=True,
+                )
 
 
 
