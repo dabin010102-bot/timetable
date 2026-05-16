@@ -883,6 +883,29 @@ def format_room_choice(room_choice) -> str:
     return "+".join(str(x) for x in normalize_room_choice(room_choice))
 
 
+def apply_manual_moves(df_src: pd.DataFrame, manual_moves: dict) -> pd.DataFrame:
+    out = df_src.copy()
+    for k, mv in manual_moves.items():
+        idx = int(k)
+        mask = out["시험인덱스"] == idx
+        if not mask.any():
+            continue
+        dur_min = int(out.loc[mask, "시험시간(분)"].iloc[0])
+        dur_slots = max(1, int((dur_min + 29) // 30))
+        room_list = normalize_room_choice(mv.get("room", mv.get("강의실", [])))
+        out.loc[mask, "주차"] = int(mv["week"])
+        out.loc[mask, "요일번호"] = int(mv["day"])
+        out.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
+        out.loc[mask, "시작슬롯"] = int(mv["start_slot"])
+        out.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
+        out.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"])) + (float(dur_min) / 30.0)
+        out.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
+        out.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
+        out.loc[mask, "강의실목록"] = [room_list for _ in range(int(mask.sum()))]
+        out.loc[mask, "강의실"] = format_room_choice(room_list)
+    return out
+
+
 @st.cache_data(show_spinner=False)
 def build_exam_student_sets(exam_df: pd.DataFrame, df_is: pd.DataFrame) -> dict[int, set[int]]:
     is_cols = [str(c) for c in df_is.columns]
@@ -1810,7 +1833,7 @@ def overall_calendar_grade_class(value) -> str:
     return "overall-grade-x"
 
 
-def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
+def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int, selected_exam_idx: int | None = None) -> str:
     slot_height = 60
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
@@ -1903,12 +1926,13 @@ def build_overall_calendar_html(df_src: pd.DataFrame, target_week: int) -> str:
                 top_px = float(event["start_slot_float"]) * slot_height
                 height_px = max(42.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height - 4.0)
                 grade_cls = overall_calendar_grade_class(event.get("학년", "-"))
+                selected_style = "border:2px solid #1d4ed8; box-shadow:0 0 0 2px rgba(37,99,235,.18);" if selected_exam_idx is not None and int(event["시험인덱스"]) == int(selected_exam_idx) else ""
                 course = html.escape(str(event.get("과목명", event.get("과목", ""))))
                 room = html.escape(str(event.get("강의실", "-")))
                 time_text = html.escape(f"{event.get('시작', '-')}~{event.get('종료', '-')}")
                 event_divs.append(
                     f"<div class='overall-abs-event {grade_cls}' "
-                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px;'>"
+                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px; {selected_style}'>"
                     f"<div class='overall-abs-title'>{course}</div>"
                     f"<div class='overall-abs-sub'>{room}</div>"
                     f"<div class='overall-abs-sub'>{time_text}</div>"
@@ -2178,19 +2202,39 @@ except Exception as e:
 
 df_ot, ot_path = load_ot_df()
 df_courseen, courseen_path = load_courseen_df()
+if "manual_moves" not in st.session_state:
+    st.session_state.manual_moves = {}
+if "manual_move_history" not in st.session_state:
+    st.session_state.manual_move_history = []
+if "sim_selected_idx" not in st.session_state:
+    st.session_state.sim_selected_idx = None
+if "move_candidates" not in st.session_state:
+    st.session_state["move_candidates"] = []
+if "move_candidate_reasons" not in st.session_state:
+    st.session_state["move_candidate_reasons"] = {}
+if "move_candidate_meta" not in st.session_state:
+    st.session_state["move_candidate_meta"] = None
+if "selected_candidate" not in st.session_state:
+    st.session_state["selected_candidate"] = None
+if "move_apply_notice" not in st.session_state:
+    st.session_state["move_apply_notice"] = ""
+
 exam_df = build_exam_df(payload)
 orig_maps = build_original_map(df_ot)
 grade_map = build_grade_map_from_courseen(df_courseen)
-exam_df = add_change_columns(exam_df, orig_maps, grade_map)
-exam_df = fill_missing_grade(exam_df, grade_map)
+base_exam_df = add_change_columns(exam_df.copy(), orig_maps, grade_map)
+base_exam_df = fill_missing_grade(base_exam_df, grade_map)
+display_exam_df = apply_manual_moves(base_exam_df, st.session_state.manual_moves)
+display_exam_df = add_change_columns(display_exam_df, orig_maps, grade_map)
+display_exam_df = fill_missing_grade(display_exam_df, grade_map)
 opt_summary_df = build_optimization_summary_df(payload)
 verify_df = build_verify_df(payload)
-decision_df = build_decision_df(payload, exam_df)
+decision_df = build_decision_df(payload, display_exam_df)
 report_images, report_dir = load_report_images()
 if report_dir is None:
     report_dir = BASE_DIR / "결과_리포트"
 if not report_images:
-    generate_fallback_report_images(exam_df, payload.get("summary", {}), report_dir)
+    generate_fallback_report_images(display_exam_df, payload.get("summary", {}), report_dir)
     report_images, report_dir = load_report_images()
 
 summary = payload.get("summary", {})
@@ -2215,8 +2259,8 @@ with st.sidebar:
 
 # 전체 요약 카드
 g1, g2, g3, g4, g5 = st.columns(5)
-g1.metric("전체 시험 과목 수", int(exam_df["과목"].nunique()))
-used_rooms = set(sum(exam_df["강의실목록"].tolist(), []))
+g1.metric("전체 시험 과목 수", int(display_exam_df["과목"].nunique()))
+used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
 g2.metric("사용/후보 강의실 수", f"{len(used_rooms)}/{len(ROOM_ORDER)}")
 g3.metric("학생 충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
 g4.metric("분반 연속배정 위반", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
@@ -2254,7 +2298,7 @@ if menu == "학번별 조회":
         sid = st.session_state.searched_sid
         row_idx = find_student_row(df_is, sid)
         if row_idx is not None:
-            df_student = student_exam_df(exam_df, df_is, row_idx)
+            df_student = student_exam_df(display_exam_df, df_is, row_idx)
             df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
             df_student = fill_missing_grade(df_student, grade_map)
 
@@ -2336,42 +2380,7 @@ if menu == "학번별 조회":
 elif menu == "이동 시뮬레이터":
     st.subheader("이동 시뮬레이터")
     st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
-
-    if "manual_moves" not in st.session_state:
-        st.session_state.manual_moves = {}
-    if "manual_move_history" not in st.session_state:
-        st.session_state.manual_move_history = []
-    if "sim_selected_idx" not in st.session_state:
-        st.session_state.sim_selected_idx = None
-    if "move_candidates" not in st.session_state:
-        st.session_state["move_candidates"] = []
-    if "move_candidate_reasons" not in st.session_state:
-        st.session_state["move_candidate_reasons"] = {}
-    if "move_candidate_meta" not in st.session_state:
-        st.session_state["move_candidate_meta"] = None
-
-    def _apply_manual_moves(df_src: pd.DataFrame) -> pd.DataFrame:
-        out = df_src.copy()
-        for k, mv in st.session_state.manual_moves.items():
-            idx = int(k)
-            mask = out["시험인덱스"] == idx
-            if not mask.any():
-                continue
-            dur_min = int(out.loc[mask, "시험시간(분)"].iloc[0])
-            dur_slots = max(1, int((dur_min + 29) // 30))
-            out.loc[mask, "주차"] = int(mv["week"])
-            out.loc[mask, "요일번호"] = int(mv["day"])
-            out.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
-            out.loc[mask, "시작슬롯"] = int(mv["start_slot"])
-            out.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
-            out.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"])) + (float(dur_min) / 30.0)
-            out.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
-            out.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
-            out.loc[mask, "강의실"] = str(int(mv["room"]))
-            out.loc[mask, "강의실목록"] = [[int(mv["room"])] for _ in range(int(mask.sum()))]
-        return out
-
-    exam_df_view = _apply_manual_moves(exam_df)
+    exam_df_view = display_exam_df.copy()
     exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
 
     c1, c2, c3, c4 = st.columns(4)
@@ -2390,10 +2399,24 @@ elif menu == "이동 시뮬레이터":
         viz_course = st.selectbox("과목", course_options, key="overall_viz_course")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
+    selected_course_row = None
+    if viz_course != "전체":
+        selected_course_pool = exam_df_view.copy()
+        if viz_grade != "전체":
+            selected_course_pool = selected_course_pool[selected_course_pool["학년정규화"] == target_grade]
+        selected_course_pool = selected_course_pool[selected_course_pool["과목명"].astype(str) == str(viz_course)]
+        if not selected_course_pool.empty:
+            selected_course_row = selected_course_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
+    display_week_num = int(selected_course_row["주차"]) if selected_course_row is not None else sim_week_num
+
     current_filter_sig = f"{sim_week_num}|{viz_room}|{viz_grade}|{viz_course}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
         st.session_state.sim_filter_sig = current_filter_sig
         st.session_state.sim_selected_idx = None
+        st.session_state["move_candidates"] = []
+        st.session_state["move_candidate_reasons"] = {}
+        st.session_state["selected_candidate"] = None
+        st.session_state["move_candidate_meta"] = None
     calendar_src = exam_df_view.copy()
     calendar_src = calendar_src[calendar_src["강의실목록"].apply(lambda xs: int(viz_room) in set(xs))]
     if viz_grade != "전체":
@@ -2402,8 +2425,13 @@ elif menu == "이동 시뮬레이터":
         calendar_src = calendar_src[calendar_src["과목명"].astype(str) == str(viz_course)]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
+    selected_exam_idx_for_calendar = st.session_state.get("sim_selected_idx")
+    if selected_exam_idx_for_calendar is None and selected_course_row is not None:
+        selected_exam_idx_for_calendar = int(selected_course_row["시험인덱스"])
+        st.session_state.sim_selected_idx = selected_exam_idx_for_calendar
+
     st.markdown("##### 현재 전체 시간표")
-    st.markdown(build_overall_calendar_html(calendar_src, sim_week_num), unsafe_allow_html=True)
+    st.markdown(build_overall_calendar_html(calendar_src, display_week_num, selected_exam_idx_for_calendar), unsafe_allow_html=True)
 
     left_col, right_col = st.columns([4, 5])
     with left_col:
@@ -2413,8 +2441,8 @@ elif menu == "이동 시뮬레이터":
                 st.image(str(selected_room_path_overall), use_container_width=True)
                 st.caption(f"강의실 {viz_room} 시각화 파일")
 
-    visible_week = calendar_src[calendar_src["주차"] == sim_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-    selectable_week = exam_df_view[exam_df_view["주차"] == sim_week_num].copy()
+    visible_week = calendar_src[calendar_src["주차"] == display_week_num].copy().sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    selectable_week = exam_df_view[exam_df_view["주차"] == display_week_num].copy()
     if viz_grade != "전체":
         selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
     if viz_course != "전체":
@@ -2470,6 +2498,9 @@ elif menu == "이동 시뮬레이터":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"현재 적용된 수동 변경: {len(st.session_state.manual_moves)}건")
+        if st.session_state.get("move_apply_notice"):
+            st.success(st.session_state["move_apply_notice"])
+            st.session_state["move_apply_notice"] = ""
         st.markdown(
             "<div class='sim-note'>추천 기준: 목적함수 변화량 최소 → 하루 시험 수 변화 최소 → 시간 변경 최소 → 강의실 변경 최소</div>",
             unsafe_allow_html=True,
@@ -2504,12 +2535,13 @@ elif menu == "이동 시뮬레이터":
 
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
-                "week": int(sim_week_num),
+                "week": int(display_week_num),
                 "course": str(sel_row["과목명"]),
             }
             if st.session_state.get("move_candidate_meta") != current_candidate_context:
                 st.session_state["move_candidates"] = []
                 st.session_state["move_candidate_reasons"] = {}
+                st.session_state["selected_candidate"] = None
                 st.session_state["move_candidate_meta"] = current_candidate_context
 
             dur_slots = max(
@@ -2518,7 +2550,7 @@ elif menu == "이동 시뮬레이터":
             )
             enrollment = len(student_sets.get(int(sel_idx), set()))
             need_room = max(1, len(sel_row["강의실목록"]))
-            allowed_weeks = [int(sim_week_num)]
+            allowed_weeks = [int(display_week_num)]
             if "fixed_week" in sel_row and pd.notna(sel_row.get("fixed_week")):
                 allowed_weeks = [int(sel_row["fixed_week"])]
             elif "주차" in sel_row:
@@ -2673,6 +2705,7 @@ elif menu == "이동 시뮬레이터":
                 rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
                 cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
                 chosen_row = cand_choice_df.iloc[0]
+                st.session_state["selected_candidate"] = chosen_row.to_dict()
                 out = scorer(
                     exam_df=exam_df_view,
                     target_idx=sel_idx,
@@ -2761,7 +2794,7 @@ elif menu == "이동 시뮬레이터":
                         "주차": int(mv["week"]),
                         "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
                         "시작": slot_to_time(int(mv["start_slot"])),
-                        "강의실": int(mv["room"]),
+                        "강의실": format_room_choice(mv["room"]),
                     }
                 )
             sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
@@ -2778,16 +2811,22 @@ elif menu == "이동 시뮬레이터":
         if st.button(
             "변경 완료",
             key="apply_move_btn",
-            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or not has_move_candidates,
+            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or st.session_state.get("selected_candidate") is None,
         ):
+            selected_candidate = st.session_state.get("selected_candidate") or {}
             prev_state = st.session_state.manual_moves.get(str(sel_idx))
             st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
             st.session_state.manual_moves[str(sel_idx)] = {
-                "week": int(chosen_row["week"]),
+                "week": int(selected_candidate.get("week", chosen_row["week"] if chosen_row is not None else display_week_num)),
                 "day": int(sim_day_no),
                 "start_slot": int(sim_start_slot),
-                "room": int(sim_room_choice[0]),
+                "room": normalize_room_choice(selected_candidate.get("room_combo", sim_room_choice)),
             }
+            st.session_state["move_candidates"] = []
+            st.session_state["move_candidate_reasons"] = {}
+            st.session_state["selected_candidate"] = None
+            st.session_state["move_candidate_meta"] = None
+            st.session_state["move_apply_notice"] = "변경이 반영되었습니다. 추가 변경은 다시 후보 탐색을 눌러 진행하세요."
             st.rerun()
     with button_row[1]:
         if st.button("이전", key="undo_last_move_btn"):
@@ -2799,6 +2838,10 @@ elif menu == "이동 시뮬레이터":
                     st.session_state.manual_moves.pop(idx_key, None)
                 else:
                     st.session_state.manual_moves[idx_key] = prev
+                st.session_state["move_candidates"] = []
+                st.session_state["move_candidate_reasons"] = {}
+                st.session_state["selected_candidate"] = None
+                st.session_state["move_candidate_meta"] = None
                 st.rerun()
     with button_row[2]:
         if st.button("초기화", key="reset_to_gurobi_btn"):
@@ -2807,12 +2850,13 @@ elif menu == "이동 시뮬레이터":
             st.session_state.sim_selected_idx = None
             st.session_state["move_candidates"] = []
             st.session_state["move_candidate_reasons"] = {}
+            st.session_state["selected_candidate"] = None
             st.session_state["move_candidate_meta"] = None
             st.rerun()
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 
-    df_ch = exam_df.copy().sort_values(["변경상태", "주차", "요일번호", "시작슬롯"]) 
+    df_ch = display_exam_df.copy().sort_values(["변경상태", "주차", "요일번호", "시작슬롯"]) 
     changed_only = st.checkbox("변경된 과목만 보기", value=False)
     if changed_only:
         df_ch = df_ch[df_ch["변경상태"] != "유지"]
@@ -2840,6 +2884,8 @@ elif menu == "변경사항 확인":
 
 elif menu == "최적화 결과":
     st.subheader("구로비 최적화 결과")
+    if st.session_state.manual_moves:
+        st.info("수동 변경 반영 중: 시간표/결정변수 표/시각화는 수동 변경 반영 상태이며, 목적함수값과 제약 위반표는 원본 최적화 결과입니다.")
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
@@ -2876,28 +2922,7 @@ elif menu == "최적화 결과":
             )
 
     st.markdown("#### 전체 캘린더 보기")
-    overall_exam_df = exam_df.copy()
-    if "manual_moves" in st.session_state and st.session_state.manual_moves:
-        for k, mv in st.session_state.manual_moves.items():
-            idx = int(k)
-            mask = overall_exam_df["시험인덱스"] == idx
-            if not mask.any():
-                continue
-            dur_min = int(overall_exam_df.loc[mask, "시험시간(분)"].iloc[0])
-            dur_slots = max(1, int((dur_min + 29) // 30))
-            room_value = mv.get("room", mv.get("강의실", []))
-            room_list = room_value if isinstance(room_value, list) else [room_value]
-            room_text = " ".join(str(int(r)) for r in room_list)
-            overall_exam_df.loc[mask, "주차"] = int(mv["week"])
-            overall_exam_df.loc[mask, "요일번호"] = int(mv["day"])
-            overall_exam_df.loc[mask, "요일"] = DAY_LABELS.get(int(mv["day"]), str(mv["day"]))
-            overall_exam_df.loc[mask, "시작슬롯"] = int(mv["start_slot"])
-            overall_exam_df.loc[mask, "종료슬롯"] = int(mv["start_slot"]) + dur_slots
-            overall_exam_df.loc[mask, "표시종료슬롯"] = float(int(mv["start_slot"]) + dur_slots)
-            overall_exam_df.loc[mask, "시작"] = slot_to_time(int(mv["start_slot"]))
-            overall_exam_df.loc[mask, "종료"] = minute_to_time(540 + int(mv["start_slot"]) * 30 + dur_min)
-            overall_exam_df.loc[mask, "강의실"] = room_text
-            overall_exam_df.loc[mask, "강의실목록"] = [room_list for _ in range(int(mask.sum()))]
+    overall_exam_df = display_exam_df.copy()
     week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
     if not week_values:
         st.info("표시할 전체 캘린더 데이터가 없습니다.")
