@@ -2362,12 +2362,10 @@ elif menu == "전체 시간표":
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        st.caption("완화 모드에서는 운영상 필수 제약만 강제하고, 나머지는 경고로 표시합니다.")
         st.caption(
             f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
             f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
         )
-        mode = st.radio("후보 표시 모드", ["Relaxed", "Strict"], index=0, horizontal=True, key="sim_mode")
         if selectable_week.empty:
             st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
@@ -2394,7 +2392,6 @@ elif menu == "전체 시간표":
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
                 "week": int(sim_week_num),
-                "mode": str(mode),
             }
             if st.session_state.get("move_candidate_meta") != current_candidate_context:
                 st.session_state["move_candidates"] = []
@@ -2429,7 +2426,7 @@ elif menu == "전체 시간표":
                 "분반 연속배정 불가": 0,
                 "최종 가능 후보": 0,
             }
-            scorer = score_move_impact_relaxed if mode == "Relaxed" else score_move_impact
+            scorer = score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
                 try:
@@ -2495,7 +2492,7 @@ elif menu == "전체 시간표":
                     move_candidates = sorted(
                         move_candidates,
                         key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
-                    )[:30]
+                    )
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
 
