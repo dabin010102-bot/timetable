@@ -2358,14 +2358,11 @@ elif menu == "전체 시간표":
     sim_day_no: int | None = None
     sim_start_slot: int | None = None
     sim_room_choice: list[int] | None = None
+    has_move_candidates = False
 
     with right_col:
         st.markdown("#### 이동 설정")
         st.caption(f"저장된 변경: {len(st.session_state.manual_moves)}건")
-        st.caption(
-            f"디버그: 캘린더표시과목={len(visible_week)}개 / 이동선택과목={len(selectable_week)}개 / "
-            f"필터(주차={sim_week_num}, 강의실={viz_room}, 학년={viz_grade}, 과목={viz_course})"
-        )
         if selectable_week.empty:
             st.warning("현재 필터에서 이동 가능한 선택 과목이 없습니다. (강의실 필터를 바꾸거나 과목=전체로 확인)")
         else:
@@ -2388,15 +2385,6 @@ elif menu == "전체 시간표":
                 f"선택 과목: **{sel_row['과목명']}**  \n"
                 f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} / 강의실 {sel_row['강의실']}"
             )
-
-            current_candidate_context = {
-                "sel_idx": int(sel_idx),
-                "week": int(sim_week_num),
-            }
-            if st.session_state.get("move_candidate_meta") != current_candidate_context:
-                st.session_state["move_candidates"] = []
-                st.session_state["move_candidate_reasons"] = {}
-                st.session_state["move_candidate_meta"] = current_candidate_context
 
             dur_slots = max(
                 1,
@@ -2427,83 +2415,78 @@ elif menu == "전체 시간표":
                 "최종 가능 후보": 0,
             }
             scorer = score_move_impact
-            if st.button("후보 탐색", key="search_move_candidates_btn"):
-                move_candidates: list[dict] = []
-                try:
-                    for week in allowed_weeks:
-                        for dnum in [1, 2, 3, 4, 5]:
-                            for st_slot in range(0, 19):
-                                if st_slot + dur_slots > 22:
-                                    continue
-                                for room_combo in room_combo_candidates:
-                                    out_eval = scorer(
-                                        exam_df=exam_df_view,
-                                        target_idx=sel_idx,
-                                        new_week=int(week),
-                                        new_day=int(dnum),
-                                        new_start=int(st_slot),
-                                        new_room=list(room_combo),
-                                        student_sets=student_sets,
-                                        summary=summary,
+            move_candidates: list[dict] = []
+            try:
+                for week in allowed_weeks:
+                    for dnum in [1, 2, 3, 4, 5]:
+                        for st_slot in range(0, 19):
+                            if st_slot + dur_slots > 22:
+                                continue
+                            for room_combo in room_combo_candidates:
+                                out_eval = scorer(
+                                    exam_df=exam_df_view,
+                                    target_idx=sel_idx,
+                                    new_week=int(week),
+                                    new_day=int(dnum),
+                                    new_start=int(st_slot),
+                                    new_room=list(room_combo),
+                                    student_sets=student_sets,
+                                    summary=summary,
+                                )
+                                if out_eval.get("feasible", False):
+                                    warning_items = []
+                                    orig_day = int(sel_row["요일번호"])
+                                    orig_start = int(sel_row["시작슬롯"])
+                                    if abs(int(dnum) - orig_day) > D_MAX:
+                                        warning_items.append("D_MAX 초과")
+                                    if abs(int(st_slot) - orig_start) > T_MAX:
+                                        warning_items.append("T_MAX 초과")
+                                    if int(week) != int(sel_row["주차"]):
+                                        warning_items.append("주차 변경")
+                                    if int(st_slot) != int(orig_start):
+                                        warning_items.append("원래 시간 변경")
+                                    if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
+                                        warning_items.append("원래 강의실 변경")
+                                    if int(out_eval.get("daily3_increase", 0)) > 0:
+                                        warning_items.append("하루 3시험 가능성")
+                                    if float(out_eval.get("objective_delta", 0.0)) > 0:
+                                        warning_items.append("목적함수 증가")
+
+                                    move_candidates.append(
+                                        {
+                                            "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                            "시작": slot_to_time(st_slot),
+                                            "종료": slot_to_time(st_slot + dur_slots),
+                                            "강의실": format_room_choice(room_combo),
+                                            "room_combo": list(room_combo),
+                                            "영향학생수": int(out_eval.get("affected_students", 0)),
+                                            "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                                            "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                                            "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                                            "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
+                                            "경고": ", ".join(warning_items) if warning_items else "-",
+                                            "week": int(week),
+                                            "dnum": int(dnum),
+                                            "slot": int(st_slot),
+                                        }
                                     )
-                                    if out_eval.get("feasible", False):
-                                        warning_items = []
-                                        orig_day = int(sel_row["요일번호"])
-                                        orig_start = int(sel_row["시작슬롯"])
-                                        if abs(int(dnum) - orig_day) > D_MAX:
-                                            warning_items.append("D_MAX 초과")
-                                        if abs(int(st_slot) - orig_start) > T_MAX:
-                                            warning_items.append("T_MAX 초과")
-                                        if int(week) != int(sel_row["주차"]):
-                                            warning_items.append("주차 변경")
-                                        if int(st_slot) != int(orig_start):
-                                            warning_items.append("원래 시간 변경")
-                                        if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
-                                            warning_items.append("원래 강의실 변경")
-                                        if int(out_eval.get("daily3_increase", 0)) > 0:
-                                            warning_items.append("하루 3시험 가능성")
-                                        if float(out_eval.get("objective_delta", 0.0)) > 0:
-                                            warning_items.append("목적함수 증가")
+                                else:
+                                    reason = str(out_eval.get("reason", ""))
+                                    if "강의실 중복" in reason:
+                                        blocked_counts["강의실 중복"] += 1
+                                    elif "학생 동시시험" in reason:
+                                        blocked_counts["학생 동시시험"] += 1
+                move_candidates = sorted(
+                    move_candidates,
+                    key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
+                )
+            except Exception as _calc_err:
+                st.error(f"후보 계산 중 오류: {_calc_err}")
 
-                                        move_candidates.append(
-                                            {
-                                                "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                                "시작": slot_to_time(st_slot),
-                                                "종료": slot_to_time(st_slot + dur_slots),
-                                                "강의실": format_room_choice(room_combo),
-                                                "room_combo": list(room_combo),
-                                                "영향학생수": int(out_eval.get("affected_students", 0)),
-                                                "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
-                                                "하루3개증가": int(out_eval.get("daily3_increase", 0)),
-                                                "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                                "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
-                                                "경고": ", ".join(warning_items) if warning_items else "-",
-                                                "week": int(week),
-                                                "dnum": int(dnum),
-                                                "slot": int(st_slot),
-                                            }
-                                        )
-                                    else:
-                                        reason = str(out_eval.get("reason", ""))
-                                        if "강의실 중복" in reason:
-                                            blocked_counts["강의실 중복"] += 1
-                                        elif "학생 동시시험" in reason:
-                                            blocked_counts["학생 동시시험"] += 1
-                    move_candidates = sorted(
-                        move_candidates,
-                        key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
-                    )
-                except Exception as _calc_err:
-                    st.error(f"후보 계산 중 오류: {_calc_err}")
-
-                blocked_counts["최종 가능 후보"] = len(move_candidates)
-                st.session_state["move_candidates"] = move_candidates
-                st.session_state["move_candidate_reasons"] = blocked_counts
-                st.session_state["move_candidate_meta"] = current_candidate_context
-                st.rerun()
-
-            stored_candidates = st.session_state.get("move_candidates", [])
-            stored_reasons = st.session_state.get("move_candidate_reasons", {})
+            blocked_counts["최종 가능 후보"] = len(move_candidates)
+            stored_candidates = move_candidates
+            stored_reasons = blocked_counts
+            has_move_candidates = len(stored_candidates) > 0
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
             if not stored_candidates:
                 if stored_reasons:
@@ -2587,7 +2570,7 @@ elif menu == "전체 시간표":
         if st.button(
             "변경 완료",
             key="apply_move_btn",
-            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or not st.session_state.get("move_candidates", []),
+            disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or not has_move_candidates,
         ):
             prev_state = st.session_state.manual_moves.get(str(sel_idx))
             st.session_state.manual_move_history.append({"idx": int(sel_idx), "prev": prev_state})
