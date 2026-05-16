@@ -742,11 +742,16 @@ def detect_id_col(df_is: pd.DataFrame) -> str:
 
 
 def resolve_is_columns_for_course(is_cols: list[str], course_name: str) -> list[str]:
+    exact_course = normalize_exact(course_name)
     nc = normalize_name(course_name)
     matched = []
     for c in is_cols:
+        exact_col = normalize_exact(c)
         ncol = normalize_name(c)
-        if ncol == nc or ncol.startswith(nc) or nc.startswith(ncol):
+        if exact_course != nc:
+            if exact_col == exact_course:
+                matched.append(c)
+        elif ncol == nc or ncol.startswith(nc) or nc.startswith(ncol):
             matched.append(c)
     return matched
 
@@ -764,22 +769,32 @@ def student_exam_df(exam_df: pd.DataFrame, df_is: pd.DataFrame, row_idx: int) ->
     is_cols = [str(c) for c in df_is.columns]
     taken_idxs = []
 
+    taken_cols = []
+    for c in is_cols:
+        try:
+            v = float(df_is.at[row_idx, c])
+            if v > 0:
+                taken_cols.append(c)
+        except Exception:
+            continue
+
+    taken_exact = {normalize_exact(c) for c in taken_cols}
+    taken_base = {normalize_name(c) for c in taken_cols}
+
     unique_courses = exam_df[["시험인덱스", "과목"]].drop_duplicates()
     for _, r in unique_courses.iterrows():
         idx = int(r["시험인덱스"])
         course = str(r["과목"])
-        cols = resolve_is_columns_for_course(is_cols, course)
-        taken = False
-        for c in cols:
-            try:
-                v = float(df_is.at[row_idx, c])
-                if v > 0:
-                    taken = True
-                    break
-            except Exception:
-                continue
-        if taken:
-            taken_idxs.append(idx)
+        course_exact = normalize_exact(course)
+        course_base = normalize_name(course)
+        has_section = course_exact != course_base
+
+        if has_section:
+            if course_exact in taken_exact:
+                taken_idxs.append(idx)
+        else:
+            if course_base in taken_base:
+                taken_idxs.append(idx)
 
     return exam_df[exam_df["시험인덱스"].isin(taken_idxs)].copy().sort_values(["주차", "start_dt", "과목"]).reset_index(drop=True)
 
@@ -1183,6 +1198,7 @@ def build_grade_map_from_courseen(df_courseen: pd.DataFrame) -> dict[str, str]:
 
 def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: dict[str, str] | None = None) -> pd.DataFrame:
     orig_base = orig_maps.get("base", {})
+    orig_exact = orig_maps.get("exact", {})
     grade_map = grade_map or {}
     out = df.copy()
     old_time = []
@@ -1194,7 +1210,10 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
 
     for _, r in out.iterrows():
         key = str(r["정규과목"])
-        meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
+        exact_key = normalize_exact(r.get("과목", r.get("과목명", "")))
+        meta = orig_exact.get(exact_key)
+        if meta is None:
+            meta = orig_base.get(key, {"slots": set(), "weekslots": set(), "rooms": set(), "grade": "-"})
 
         cur_week = int(r["주차"])
         cur_day = int(r["요일번호"])
