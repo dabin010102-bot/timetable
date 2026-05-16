@@ -2422,20 +2422,25 @@ elif menu == "이동 시뮬레이터":
     with f2:
         viz_grade = st.selectbox("학년", ["전체", "1학년", "2학년", "3학년", "4학년"], key="overall_viz_grade")
     with f3:
-        sim_search = st.text_input("과목 검색", key="sim_course_search")
+        grade_filter_value = normalize_grade_value(viz_grade)
+        course_src = exam_df_view.copy()
+        if viz_grade != "전체":
+            course_src = course_src[course_src["학년정규화"] == grade_filter_value]
+        sim_course = st.selectbox(
+            "과목 선택",
+            ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist()),
+            key="sim_course_search",
+        )
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
     target_grade = normalize_grade_value(viz_grade)
-    search_text = str(sim_search or "").strip().lower()
+    selected_course_name = str(sim_course or "전체")
 
     calendar_src = exam_df_view.copy()
     if viz_grade != "전체":
         calendar_src = calendar_src[calendar_src["학년정규화"] == target_grade]
-    if search_text:
-        calendar_src = calendar_src[
-            calendar_src["과목명"].astype(str).str.lower().str.contains(search_text, na=False)
-            | calendar_src["과목"].astype(str).str.lower().str.contains(search_text, na=False)
-        ]
+    if selected_course_name != "전체":
+        calendar_src = calendar_src[calendar_src["과목명"].astype(str) == selected_course_name]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
     selected_course_row = None
@@ -2444,16 +2449,20 @@ elif menu == "이동 시뮬레이터":
         if not selected_pool.empty:
             candidate_row = selected_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
             grade_ok = viz_grade == "전체" or normalize_grade_value(candidate_row.get("학년", "-")) == target_grade
-            search_ok = (not search_text) or (search_text in str(candidate_row.get("과목명", "")).lower()) or (search_text in str(candidate_row.get("과목", "")).lower())
-            if grade_ok and search_ok:
+            course_ok = selected_course_name == "전체" or str(candidate_row.get("과목명", "")) == selected_course_name
+            if grade_ok and course_ok:
                 selected_course_row = candidate_row
+    if selected_course_row is None and selected_course_name != "전체":
+        selected_course_pool = exam_df_view.copy()
+        if viz_grade != "전체":
+            selected_course_pool = selected_course_pool[selected_course_pool["학년정규화"] == target_grade]
+        selected_course_pool = selected_course_pool[selected_course_pool["과목명"].astype(str) == selected_course_name]
+        if not selected_course_pool.empty:
+            selected_course_row = selected_course_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
 
     display_week_num = int(selected_course_row["주차"]) if selected_course_row is not None else sim_week_num
-    if selected_course_row is not None and display_week_num != sim_week_num:
-        st.session_state["sim_week_view"] = f"{display_week_num}주차"
-        sim_week_num = display_week_num
 
-    current_filter_sig = f"{sim_week_num}|{viz_grade}|{search_text}|{st.session_state.get('sim_selected_idx')}"
+    current_filter_sig = f"{sim_week_num}|{viz_grade}|{selected_course_name}|{st.session_state.get('sim_selected_idx')}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
         st.session_state.sim_filter_sig = current_filter_sig
         st.session_state["move_candidates"] = []
@@ -2476,11 +2485,8 @@ elif menu == "이동 시뮬레이터":
     selectable_week = exam_df_view[exam_df_view["주차"] == display_week_num].copy()
     if viz_grade != "전체":
         selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
-    if search_text:
-        selectable_week = selectable_week[
-            selectable_week["과목명"].astype(str).str.lower().str.contains(search_text, na=False)
-            | selectable_week["과목"].astype(str).str.lower().str.contains(search_text, na=False)
-        ]
+    if selected_course_name != "전체":
+        selectable_week = selectable_week[selectable_week["과목명"].astype(str) == selected_course_name]
     selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
     student_sets = build_exam_student_sets(exam_df_view, df_is)
     sel_idx: int | None = None
