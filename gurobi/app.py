@@ -7,6 +7,7 @@ import re
 import io
 from itertools import combinations
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -2072,11 +2073,11 @@ def render_room_calendar_fallback(exam_df_src: pd.DataFrame, room_no: int, key_p
 def student_summary_cards(df_student: pd.DataFrame):
     def _card_html(a: str, b: str, c: str, d: str, e: str) -> str:
         cards = [
-            ("내 시험 개수", a),
-            ("첫 시험", b),
-            ("마지막 시험", c),
-            ("하루 최대 시험 수", d),
-            ("연속 시험 여부", e),
+            ("총 시험 수", a),
+            ("하루 최대 시험 수", b),
+            ("시험 없는 날짜 수", c),
+            ("첫 시험", d),
+            ("마지막 시험", e),
         ]
         parts = ["<div class='big-summary-row'>"]
         for title, val in cards:
@@ -2090,7 +2091,7 @@ def student_summary_cards(df_student: pd.DataFrame):
         return "".join(parts)
 
     if df_student.empty:
-        st.markdown(_card_html("0", "-", "-", "0", "없음"), unsafe_allow_html=True)
+        st.markdown(_card_html("0", "0", "15", "-", "-"), unsafe_allow_html=True)
         return
 
     count_exam = len(df_student)
@@ -2107,13 +2108,20 @@ def student_summary_cards(df_student: pd.DataFrame):
             consecutive = True
             break
 
+    all_exam_dates = set()
+    for week_value, week_start in WEEK_START_DATE.items():
+        for day_offset in range(5):
+            all_exam_dates.add((week_value, (week_start + timedelta(days=day_offset)).strftime("%m/%d")))
+    taken_dates = set((int(r["주차"]), str(r["날짜"])) for _, r in df_student.iterrows())
+    no_exam_date_count = max(0, len(all_exam_dates - taken_dates))
+
     st.markdown(
         _card_html(
             str(count_exam),
+            str(max_per_day),
+            str(no_exam_date_count),
             first_exam.strftime("%m/%d %H:%M"),
             last_exam.strftime("%m/%d %H:%M"),
-            str(max_per_day),
-            "있음" if consecutive else "없음",
         ),
         unsafe_allow_html=True,
     )
@@ -2205,6 +2213,21 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
     return ("\r\n".join(lines) + "\r\n").encode("utf-8")
 
 
+def make_google_calendar_url(row: pd.Series, sid: str) -> str:
+    start = pd.to_datetime(row["start_dt"]).strftime("%Y%m%dT%H%M%S")
+    end = pd.to_datetime(row["end_dt"]).strftime("%Y%m%dT%H%M%S")
+    title = quote(f"{row.get('과목명', row.get('과목', '시험'))} 시험")
+    location = quote(str(row.get("강의실", "-")))
+    details = quote(f"INUTimetable 시험시간표 / 학번 {sid}")
+    return (
+        "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={title}"
+        f"&dates={start}/{end}"
+        f"&location={location}"
+        f"&details={details}"
+    )
+
+
 # -------------------------------------------------
 # 데이터 로드
 # -------------------------------------------------
@@ -2238,6 +2261,8 @@ if "selected_candidate" not in st.session_state:
     st.session_state["selected_candidate"] = None
 if "move_apply_notice" not in st.session_state:
     st.session_state["move_apply_notice"] = ""
+if "move_search_notice" not in st.session_state:
+    st.session_state["move_search_notice"] = ""
 
 exam_df = build_exam_df(payload)
 orig_maps = build_original_map(df_ot)
@@ -2376,6 +2401,19 @@ if menu == "학번별 조회":
                 file_name=f"student_{sid}_exam_calendar.ics",
                 mime="text/calendar",
             )
+            st.caption("iPhone에서는 ICS 미리보기 대신 아래 Google Calendar 링크로 바로 추가할 수도 있습니다.")
+
+            st.markdown("#### Google Calendar 바로 추가")
+            for _, row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
+                gc_url = make_google_calendar_url(row, sid)
+                left_gc, right_gc = st.columns([4, 1.3])
+                with left_gc:
+                    st.markdown(
+                        f"**{row['과목명']}**  \n"
+                        f"{row['요일']} {row['시작']}~{row['종료']} / {row['강의실']}"
+                    )
+                with right_gc:
+                    st.markdown(f"[Google Calendar에 추가]({gc_url})")
 
             # 해석 문구
             total_n = len(df_student)
@@ -2427,7 +2465,7 @@ elif menu == "이동 시뮬레이터":
         if viz_grade != "전체":
             course_src = course_src[course_src["학년정규화"] == grade_filter_value]
         sim_course = st.selectbox(
-            "과목 선택",
+            "과목 검색",
             ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist()),
             key="sim_course_search",
         )
@@ -2540,6 +2578,9 @@ elif menu == "이동 시뮬레이터":
         if st.session_state.get("move_apply_notice"):
             st.success(st.session_state["move_apply_notice"])
             st.session_state["move_apply_notice"] = ""
+        if st.session_state.get("move_search_notice"):
+            st.info(st.session_state["move_search_notice"])
+            st.session_state["move_search_notice"] = ""
         st.markdown(
             "<div class='sim-note'>추천 기준: 목적함수 변화량 최소 → 하루 시험 수 변화 최소 → 시간 변경 최소 → 강의실 변경 최소</div>",
             unsafe_allow_html=True,
@@ -2639,15 +2680,24 @@ elif menu == "이동 시뮬레이터":
             scorer = score_move_impact
             if st.button("후보 탐색", key="search_move_candidates_btn"):
                 move_candidates: list[dict] = []
+                total_checks = max(1, len(allowed_weeks) * 5 * len(start_slots_to_search) * len(room_combo_candidates))
+                checked_count = 0
+                progress_box = st.empty()
+                progress_text = st.empty()
+                progress_bar = st.progress(0)
                 try:
                     stop_search = False
-                    with st.spinner("후보 탐색 중..."):
+                    with st.spinner("후보 탐색 중입니다..."):
+                        progress_box.info("후보 탐색 중입니다...")
                         for week in allowed_weeks:
                             for dnum in [1, 2, 3, 4, 5]:
                                 for st_slot in start_slots_to_search:
                                     if st_slot + dur_slots > 22:
                                         continue
                                     for room_combo in room_combo_candidates:
+                                        checked_count += 1
+                                        progress_text.caption(f"후보 탐색 중입니다... ({checked_count} / {total_checks})")
+                                        progress_bar.progress(min(checked_count / total_checks, 1.0))
                                         if len(move_candidates) >= 20:
                                             stop_search = True
                                             break
@@ -2714,18 +2764,25 @@ elif menu == "이동 시뮬레이터":
                     )
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
+                progress_text.empty()
+                progress_bar.empty()
                 blocked_counts["최종 가능 후보"] = len(move_candidates)
                 st.session_state["move_candidates"] = move_candidates
                 st.session_state["move_candidate_reasons"] = blocked_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
+                if move_candidates:
+                    st.session_state["move_search_notice"] = f"가능 후보 {len(move_candidates)}개를 찾았습니다."
+                    progress_box.success(st.session_state["move_search_notice"])
+                else:
+                    st.session_state["move_search_notice"] = "현재 조건에서 가능한 이동 후보가 없습니다."
+                    progress_box.info(st.session_state["move_search_notice"])
 
             stored_candidates = st.session_state.get("move_candidates", [])
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
-            has_move_candidates = len(stored_candidates) > 0
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
             if not stored_candidates:
                 if stored_reasons:
-                    st.warning("가능한 이동 후보가 없습니다.")
+                    st.info("현재 조건에서 가능한 이동 후보가 없습니다.")
                     for label, count in stored_reasons.items():
                         st.write(f"- {label}: {int(count)}개")
                 else:
@@ -2870,7 +2927,7 @@ elif menu == "이동 시뮬레이터":
             st.session_state["move_candidate_reasons"] = {}
             st.session_state["selected_candidate"] = None
             st.session_state["move_candidate_meta"] = None
-            st.session_state["move_apply_notice"] = "변경이 반영되었습니다. 추가 변경은 다시 후보 탐색을 눌러 진행하세요."
+            st.session_state["move_apply_notice"] = "✅ 변경이 반영되었습니다."
             st.rerun()
     with button_row[1]:
         if st.button("이전", key="undo_last_move_btn"):
@@ -2896,6 +2953,7 @@ elif menu == "이동 시뮬레이터":
             st.session_state["move_candidate_reasons"] = {}
             st.session_state["selected_candidate"] = None
             st.session_state["move_candidate_meta"] = None
+            st.session_state["move_apply_notice"] = "초기화되었습니다."
             st.rerun()
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
@@ -2929,7 +2987,7 @@ elif menu == "변경사항 확인":
 elif menu == "최적화 결과":
     st.subheader("구로비 최적화 결과")
     if st.session_state.manual_moves:
-        st.info("수동 변경 반영 중: 시간표/결정변수 표/시각화는 수동 변경 반영 상태이며, 목적함수값과 제약 위반표는 원본 최적화 결과입니다.")
+        st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
