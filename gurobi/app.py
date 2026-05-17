@@ -36,9 +36,51 @@ st.markdown(
     }
     .block-container,
     [data-testid="stAppViewContainer"] .main .block-container {
-      padding-top: 0.7rem !important;
-      padding-bottom: 1.1rem !important;
+      padding-top: 0.35rem !important;
+      padding-bottom: 0.8rem !important;
       max-width: 98vw !important;
+    }
+    .compact-header {
+      margin: 0 0 0.25rem 0;
+      padding: 0;
+    }
+    .compact-header-title {
+      font-size: 2.9rem;
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      color: #0b1220 !important;
+      margin: 0;
+    }
+    .compact-header-meta {
+      margin-top: 0.08rem;
+      font-size: 0.72rem;
+      line-height: 1.1;
+      color: #64748b !important;
+    }
+    .compact-header-desc {
+      margin-top: 0.08rem;
+      font-size: 0.88rem;
+      line-height: 1.15;
+      color: #64748b !important;
+    }
+    .compact-section-title {
+      margin: 0.2rem 0 0.2rem 0;
+      font-size: 1.7rem;
+      line-height: 1.05;
+      font-weight: 900;
+      color: #0b1220 !important;
+    }
+    .compact-calendar-title {
+      margin: 0.18rem 0 0.12rem 0;
+      font-size: 1.45rem;
+      line-height: 1.05;
+      font-weight: 900;
+      color: #0b1220 !important;
+    }
+    .compact-tabs {
+      margin: 0;
+      padding: 0;
     }
     [data-testid="stHeader"], [data-testid="stToolbar"] {
       background: transparent !important;
@@ -60,12 +102,15 @@ st.markdown(
       line-height: 1.05 !important;
     }
     h2, h3 {
-      margin-top: 0.35rem !important;
-      margin-bottom: 0.2rem !important;
+      margin-top: 0.22rem !important;
+      margin-bottom: 0.14rem !important;
     }
     p {
       margin-top: 0.12rem !important;
       margin-bottom: 0.2rem !important;
+    }
+    hr {
+      margin: 0.2rem 0 0.35rem 0 !important;
     }
     [data-testid="stSidebar"] * {
       color: var(--text-main) !important;
@@ -140,7 +185,17 @@ st.markdown(
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 10px;
-      padding: 8px 10px;
+      padding: 6px 9px;
+      min-height: 0 !important;
+    }
+    div[data-testid="stMetric"] label,
+    div[data-testid="stMetric"] [data-testid="stMetricLabel"] {
+      font-size: 0.9rem !important;
+      line-height: 1.05 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+      font-size: 2.05rem !important;
+      line-height: 1.0 !important;
     }
     .big-summary-row {
       display:grid;
@@ -319,8 +374,8 @@ st.markdown(
       display:flex;
       flex-wrap:wrap;
       gap:8px;
-      margin:4px 0 8px 0;
-      font-size:12px;
+      margin:2px 0 4px 0;
+      font-size:11px;
       font-weight:700;
       color:#334155 !important;
     }
@@ -391,8 +446,8 @@ st.markdown(
     .overall-abs-wrap {
       overflow-x:auto;
       overflow-y:auto;
-      padding-bottom:6px;
-      margin-top:4px;
+      padding-bottom:4px;
+      margin-top:2px;
       max-height:none;
       width:100%;
       max-width:100vw;
@@ -412,13 +467,13 @@ st.markdown(
       border-bottom:1px solid #d8e0ea;
     }
     .overall-abs-head {
-      padding:8px 6px;
+      padding:6px 4px;
       text-align:center;
-      font-size:13px;
+      font-size:12px;
       font-weight:900;
       color:#0b1220 !important;
       border-right:1px solid #d8e0ea;
-      line-height:1.25;
+      line-height:1.15;
     }
     .overall-abs-head:last-child {
       border-right:none;
@@ -440,7 +495,7 @@ st.markdown(
       width:100%;
       transform:translateY(-50%);
       text-align:center;
-      font-size:11px;
+      font-size:10px;
       font-weight:800;
       color:#334155 !important;
     }
@@ -462,7 +517,7 @@ st.markdown(
     }
     .overall-abs-event {
       position:absolute;
-      padding:4px 6px;
+      padding:3px 5px;
       border-radius:8px;
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
@@ -473,7 +528,7 @@ st.markdown(
       z-index:1;
     }
     .overall-abs-title {
-      font-size:11px;
+      font-size:10px;
       font-weight:900;
       color:#0b1220 !important;
       word-break:keep-all;
@@ -484,8 +539,8 @@ st.markdown(
       overflow:hidden;
     }
     .overall-abs-sub {
-      margin-top:2px;
-      font-size:10px;
+      margin-top:1px;
+      font-size:9px;
       font-weight:700;
       color:#334155 !important;
       word-break:keep-all;
@@ -510,6 +565,15 @@ st.markdown(
       font-size:13px;
       line-height:1.45;
       margin:8px 0 10px 0;
+    }
+    div[data-baseweb="tab-list"] {
+      gap: 0.2rem !important;
+      margin-bottom: 0.1rem !important;
+    }
+    button[data-baseweb="tab"] {
+      min-height: 30px !important;
+      padding: 3px 8px !important;
+      font-size: 0.95rem !important;
     }
     .sim-card {
       border:1px solid #d8e0ea;
@@ -1873,7 +1937,7 @@ def build_overall_calendar_html(
     selected_exam_idx: int | None = None,
     clickable: bool = False,
 ) -> str:
-    slot_height = 48
+    slot_height = 42
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
@@ -2313,9 +2377,16 @@ summary = payload.get("summary", {})
 # -------------------------------------------------
 # UI
 # -------------------------------------------------
-st.title("INUTimetable")
-st.caption("빌드: 5c1a2ac-final")
-st.caption("최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화")
+st.markdown(
+    """
+    <div class="compact-header">
+      <div class="compact-header-title">INUTimetable</div>
+      <div class="compact-header-meta">빌드: 5c1a2ac-final</div>
+      <div class="compact-header-desc">최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
     st.header("메뉴")
@@ -3017,7 +3088,7 @@ elif menu == "변경사항 확인":
     )
 
 elif menu == "최적화 결과":
-    st.subheader("최적화 결과")
+    st.markdown("<div class='compact-section-title'>최적화 결과</div>", unsafe_allow_html=True)
     if st.session_state.manual_moves:
         st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
 
@@ -3029,7 +3100,7 @@ elif menu == "최적화 결과":
     k4.metric("사용 강의실 수", len(used_rooms))
     k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
 
-    st.markdown("#### 전체 시험 캘린더")
+    st.markdown("<div class='compact-calendar-title'>전체 시험 캘린더</div>", unsafe_allow_html=True)
     overall_exam_df = display_exam_df.copy()
     week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
     if not week_values:
