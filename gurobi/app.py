@@ -36,44 +36,38 @@ st.markdown(
     }
     .block-container,
     [data-testid="stAppViewContainer"] .main .block-container {
-      padding-top: 0.35rem !important;
-      padding-bottom: 0.8rem !important;
+      padding-top: 0.18rem !important;
+      padding-bottom: 0.65rem !important;
       max-width: 98vw !important;
     }
     .compact-header {
-      margin: 0 0 0.25rem 0;
+      margin: 0 0 0.06rem 0;
       padding: 0;
     }
     .compact-header-title {
-      font-size: 2.9rem;
-      font-weight: 900;
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-      color: #0b1220 !important;
+      font-size: 0.78rem;
+      font-weight: 800;
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      color: #64748b !important;
       margin: 0;
     }
-    .compact-header-meta {
-      margin-top: 0.08rem;
-      font-size: 0.72rem;
-      line-height: 1.1;
-      color: #64748b !important;
-    }
     .compact-header-desc {
-      margin-top: 0.08rem;
-      font-size: 0.88rem;
-      line-height: 1.15;
+      margin-top: 0.02rem;
+      font-size: 0.72rem;
+      line-height: 1.0;
       color: #64748b !important;
     }
     .compact-section-title {
-      margin: 0.2rem 0 0.2rem 0;
-      font-size: 1.7rem;
+      margin: 0.08rem 0 0.08rem 0;
+      font-size: 0.95rem;
       line-height: 1.05;
-      font-weight: 900;
-      color: #0b1220 !important;
+      font-weight: 800;
+      color: #64748b !important;
     }
     .compact-calendar-title {
-      margin: 0.18rem 0 0.12rem 0;
-      font-size: 1.45rem;
+      margin: 0.02rem 0 0.06rem 0;
+      font-size: 1.05rem;
       line-height: 1.05;
       font-weight: 900;
       color: #0b1220 !important;
@@ -97,20 +91,20 @@ st.markdown(
       color: var(--text-main) !important;
     }
     h1 {
-      margin: 0 0 0.1rem 0 !important;
+      margin: 0 !important;
       padding: 0 !important;
-      line-height: 1.05 !important;
+      line-height: 1 !important;
     }
     h2, h3 {
-      margin-top: 0.22rem !important;
-      margin-bottom: 0.14rem !important;
+      margin-top: 0.08rem !important;
+      margin-bottom: 0.08rem !important;
     }
     p {
-      margin-top: 0.12rem !important;
-      margin-bottom: 0.2rem !important;
+      margin-top: 0.05rem !important;
+      margin-bottom: 0.08rem !important;
     }
     hr {
-      margin: 0.2rem 0 0.35rem 0 !important;
+      margin: 0.08rem 0 0.15rem 0 !important;
     }
     [data-testid="stSidebar"] * {
       color: var(--text-main) !important;
@@ -185,16 +179,16 @@ st.markdown(
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 10px;
-      padding: 6px 9px;
+      padding: 5px 8px;
       min-height: 0 !important;
     }
     div[data-testid="stMetric"] label,
     div[data-testid="stMetric"] [data-testid="stMetricLabel"] {
-      font-size: 0.9rem !important;
-      line-height: 1.05 !important;
+      font-size: 0.82rem !important;
+      line-height: 1.0 !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-      font-size: 2.05rem !important;
+      font-size: 1.68rem !important;
       line-height: 1.0 !important;
     }
     .big-summary-row {
@@ -373,9 +367,9 @@ st.markdown(
     .overall-legend {
       display:flex;
       flex-wrap:wrap;
-      gap:8px;
-      margin:2px 0 4px 0;
-      font-size:11px;
+      gap:6px;
+      margin:1px 0 2px 0;
+      font-size:10px;
       font-weight:700;
       color:#334155 !important;
     }
@@ -446,8 +440,8 @@ st.markdown(
     .overall-abs-wrap {
       overflow-x:auto;
       overflow-y:auto;
-      padding-bottom:4px;
-      margin-top:2px;
+      padding-bottom:2px;
+      margin-top:1px;
       max-height:none;
       width:100%;
       max-width:100vw;
@@ -467,13 +461,13 @@ st.markdown(
       border-bottom:1px solid #d8e0ea;
     }
     .overall-abs-head {
-      padding:6px 4px;
+      padding:4px 3px;
       text-align:center;
-      font-size:12px;
+      font-size:11px;
       font-weight:900;
       color:#0b1220 !important;
       border-right:1px solid #d8e0ea;
-      line-height:1.15;
+      line-height:1.05;
     }
     .overall-abs-head:last-child {
       border-right:none;
@@ -495,7 +489,7 @@ st.markdown(
       width:100%;
       transform:translateY(-50%);
       text-align:center;
-      font-size:10px;
+      font-size:9px;
       font-weight:800;
       color:#334155 !important;
     }
@@ -517,7 +511,7 @@ st.markdown(
     }
     .overall-abs-event {
       position:absolute;
-      padding:3px 5px;
+      padding:2px 4px;
       border-radius:8px;
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
@@ -528,7 +522,7 @@ st.markdown(
       z-index:1;
     }
     .overall-abs-title {
-      font-size:10px;
+      font-size:9px;
       font-weight:900;
       color:#0b1220 !important;
       word-break:keep-all;
@@ -540,7 +534,7 @@ st.markdown(
     }
     .overall-abs-sub {
       margin-top:1px;
-      font-size:9px;
+      font-size:8px;
       font-weight:700;
       color:#334155 !important;
       word-break:keep-all;
@@ -568,12 +562,12 @@ st.markdown(
     }
     div[data-baseweb="tab-list"] {
       gap: 0.2rem !important;
-      margin-bottom: 0.1rem !important;
+      margin-bottom: 0.02rem !important;
     }
     button[data-baseweb="tab"] {
-      min-height: 30px !important;
-      padding: 3px 8px !important;
-      font-size: 0.95rem !important;
+      min-height: 26px !important;
+      padding: 1px 7px !important;
+      font-size: 0.82rem !important;
     }
     .sim-card {
       border:1px solid #d8e0ea;
@@ -1937,7 +1931,7 @@ def build_overall_calendar_html(
     selected_exam_idx: int | None = None,
     clickable: bool = False,
 ) -> str:
-    slot_height = 42
+    slot_height = 36
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
@@ -2381,8 +2375,7 @@ st.markdown(
     """
     <div class="compact-header">
       <div class="compact-header-title">INUTimetable</div>
-      <div class="compact-header-meta">빌드: 5c1a2ac-final</div>
-      <div class="compact-header-desc">최적화 결과 조회 서비스 | 충돌 최소화 · 학생 부담 완화</div>
+      <div class="compact-header-desc">충돌 최소화 · 학생 부담 완화 시험시간표</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -3088,18 +3081,6 @@ elif menu == "변경사항 확인":
     )
 
 elif menu == "최적화 결과":
-    st.markdown("<div class='compact-section-title'>최적화 결과</div>", unsafe_allow_html=True)
-    if st.session_state.manual_moves:
-        st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
-
-    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
-    k2.metric("총 시험 수", int(display_exam_df["과목"].nunique()))
-    k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
-    k4.metric("사용 강의실 수", len(used_rooms))
-    k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
-
     st.markdown("<div class='compact-calendar-title'>전체 시험 캘린더</div>", unsafe_allow_html=True)
     overall_exam_df = display_exam_df.copy()
     week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
@@ -3113,6 +3094,17 @@ elif menu == "최적화 결과":
                     build_overall_calendar_html(overall_exam_df, int(week_value)),
                     unsafe_allow_html=True,
                 )
+
+    if st.session_state.manual_moves:
+        st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
+
+    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
+    k2.metric("총 시험 수", int(display_exam_df["과목"].nunique()))
+    k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
+    k4.metric("사용 강의실 수", len(used_rooms))
+    k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
 
     with st.expander("최적화 설정 정보", expanded=False):
         st.markdown(
