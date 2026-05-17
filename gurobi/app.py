@@ -34,14 +34,38 @@ st.markdown(
       font-size: 16px !important;
       background: #ffffff !important;
     }
+    .block-container,
+    [data-testid="stAppViewContainer"] .main .block-container {
+      padding-top: 0.7rem !important;
+      padding-bottom: 1.1rem !important;
+      max-width: 98vw !important;
+    }
     [data-testid="stHeader"], [data-testid="stToolbar"] {
       background: transparent !important;
     }
     .stMarkdown, .stCaption, .stText, .stMetricLabel, .stMetricValue, .st-emotion-cache-10trblm {
       color: var(--text-main) !important;
     }
+    .stCaption {
+      margin: 0 !important;
+      font-size: 0.82rem !important;
+      line-height: 1.2 !important;
+    }
     h1, h2, h3, h4, h5, h6, p, span, label, small, div {
       color: var(--text-main) !important;
+    }
+    h1 {
+      margin: 0 0 0.1rem 0 !important;
+      padding: 0 !important;
+      line-height: 1.05 !important;
+    }
+    h2, h3 {
+      margin-top: 0.35rem !important;
+      margin-bottom: 0.2rem !important;
+    }
+    p {
+      margin-top: 0.12rem !important;
+      margin-bottom: 0.2rem !important;
     }
     [data-testid="stSidebar"] * {
       color: var(--text-main) !important;
@@ -115,30 +139,30 @@ st.markdown(
     div[data-testid="stMetric"] {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 10px 12px;
+      border-radius: 10px;
+      padding: 8px 10px;
     }
     .big-summary-row {
       display:grid;
-      grid-template-columns: repeat(5, minmax(120px, 1fr));
-      gap:10px;
-      margin: 6px 0 12px 0;
+      grid-template-columns: repeat(5, minmax(108px, 1fr));
+      gap:8px;
+      margin: 4px 0 8px 0;
     }
     .big-summary-card {
       border:1px solid #cbd5e1;
-      border-radius:12px;
+      border-radius:10px;
       background:#ffffff;
-      padding:10px 12px;
-      min-height:84px;
+      padding:8px 10px;
+      min-height:68px;
     }
     .big-summary-title {
-      font-size:13px;
+      font-size:12px;
       font-weight:700;
       color:#334155 !important;
     }
     .big-summary-value {
-      margin-top:6px;
-      font-size:22px;
+      margin-top:4px;
+      font-size:18px;
       font-weight:800;
       color:#0b1220 !important;
       line-height:1.2;
@@ -294,9 +318,9 @@ st.markdown(
     .overall-legend {
       display:flex;
       flex-wrap:wrap;
-      gap:10px;
-      margin:6px 0 10px 0;
-      font-size:13px;
+      gap:8px;
+      margin:4px 0 8px 0;
+      font-size:12px;
       font-weight:700;
       color:#334155 !important;
     }
@@ -306,8 +330,8 @@ st.markdown(
       gap:6px;
     }
     .overall-legend-swatch {
-      width:14px;
-      height:14px;
+      width:12px;
+      height:12px;
       border-radius:4px;
       border:1px solid rgba(15,23,42,.12);
       flex:0 0 auto;
@@ -367,28 +391,30 @@ st.markdown(
     .overall-abs-wrap {
       overflow-x:auto;
       overflow-y:auto;
-      padding-bottom:10px;
-      margin-top:8px;
+      padding-bottom:6px;
+      margin-top:4px;
       max-height:none;
       width:100%;
+      max-width:100vw;
     }
     .overall-abs-shell {
-      min-width:1260px;
+      width:100%;
+      min-width:0;
       border:1px solid #d8e0ea;
-      border-radius:14px;
+      border-radius:12px;
       background:#ffffff;
       overflow:visible;
     }
     .overall-abs-header {
       display:grid;
-      grid-template-columns: 86px repeat(5, minmax(220px, 1fr));
+      grid-template-columns: 72px repeat(5, minmax(0, 1fr));
       background:#eaf2ff;
       border-bottom:1px solid #d8e0ea;
     }
     .overall-abs-head {
-      padding:12px 8px;
+      padding:8px 6px;
       text-align:center;
-      font-size:14px;
+      font-size:13px;
       font-weight:900;
       color:#0b1220 !important;
       border-right:1px solid #d8e0ea;
@@ -399,7 +425,7 @@ st.markdown(
     }
     .overall-abs-body {
       display:grid;
-      grid-template-columns: 86px repeat(5, minmax(220px, 1fr));
+      grid-template-columns: 72px repeat(5, minmax(0, 1fr));
       align-items:stretch;
       overflow:visible;
     }
@@ -414,7 +440,7 @@ st.markdown(
       width:100%;
       transform:translateY(-50%);
       text-align:center;
-      font-size:12px;
+      font-size:11px;
       font-weight:800;
       color:#334155 !important;
     }
@@ -425,9 +451,9 @@ st.markdown(
         repeating-linear-gradient(
           to bottom,
           #ffffff 0,
-          #ffffff 59px,
-          #edf2f7 59px,
-          #edf2f7 60px
+          #ffffff 47px,
+          #edf2f7 47px,
+          #edf2f7 48px
         );
       overflow:hidden;
     }
@@ -436,8 +462,8 @@ st.markdown(
     }
     .overall-abs-event {
       position:absolute;
-      padding:6px 8px;
-      border-radius:10px;
+      padding:4px 6px;
+      border-radius:8px;
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
       overflow:hidden;
@@ -447,19 +473,19 @@ st.markdown(
       z-index:1;
     }
     .overall-abs-title {
-      font-size:12px;
+      font-size:11px;
       font-weight:900;
       color:#0b1220 !important;
       word-break:keep-all;
       overflow-wrap:anywhere;
       display:-webkit-box;
-      -webkit-line-clamp:3;
+      -webkit-line-clamp:2;
       -webkit-box-orient:vertical;
       overflow:hidden;
     }
     .overall-abs-sub {
-      margin-top:4px;
-      font-size:11px;
+      margin-top:2px;
+      font-size:10px;
       font-weight:700;
       color:#334155 !important;
       word-break:keep-all;
@@ -1847,7 +1873,7 @@ def build_overall_calendar_html(
     selected_exam_idx: int | None = None,
     clickable: bool = False,
 ) -> str:
-    slot_height = 60
+    slot_height = 48
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
@@ -2995,6 +3021,18 @@ elif menu == "최적화 결과":
     if st.session_state.manual_moves:
         st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
 
+    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
+    k2.metric("총 시험 수", int(display_exam_df["과목"].nunique()))
+    k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
+    k4.metric("사용 강의실 수", len(used_rooms))
+    k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
+    st.info(
+        f"현재 가중치: 강의실이동 {WEIGHT_ROOM_MOVE:.4f} / 시간이동 {WEIGHT_TIME_MOVE:.4f} / 하루시험수 {WEIGHT_DAILY:.4f} | "
+        f"시험 집중도 제한: 하루 최대 시험 수 기준 {D_MAX}, 연속 시험 시간 기준 {T_MAX}"
+    )
+
     st.markdown("#### 전체 시험 캘린더")
     overall_exam_df = display_exam_df.copy()
     week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
@@ -3009,17 +3047,6 @@ elif menu == "최적화 결과":
                     unsafe_allow_html=True,
                 )
 
-    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
-    k2.metric("총 시험 수", int(display_exam_df["과목"].nunique()))
-    k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
-    k4.metric("사용 강의실 수", len(used_rooms))
-    k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
-    st.info(
-        f"현재 가중치: 강의실이동 {WEIGHT_ROOM_MOVE:.4f} / 시간이동 {WEIGHT_TIME_MOVE:.4f} / 하루시험수 {WEIGHT_DAILY:.4f} | "
-        f"시험 집중도 제한: 하루 최대 시험 수 기준 {D_MAX}, 연속 시험 시간 기준 {T_MAX}"
-    )
     st.markdown("#### 결과 표")
     st.dataframe(opt_summary_df, use_container_width=True, hide_index=True)
 
