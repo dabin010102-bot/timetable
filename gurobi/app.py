@@ -3028,10 +3028,6 @@ elif menu == "최적화 결과":
     k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
     k4.metric("사용 강의실 수", len(used_rooms))
     k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
-    st.info(
-        f"현재 가중치: 강의실이동 {WEIGHT_ROOM_MOVE:.4f} / 시간이동 {WEIGHT_TIME_MOVE:.4f} / 하루시험수 {WEIGHT_DAILY:.4f} | "
-        f"시험 집중도 제한: 하루 최대 시험 수 기준 {D_MAX}, 연속 시험 시간 기준 {T_MAX}"
-    )
 
     st.markdown("#### 전체 시험 캘린더")
     overall_exam_df = display_exam_df.copy()
@@ -3046,6 +3042,15 @@ elif menu == "최적화 결과":
                     build_overall_calendar_html(overall_exam_df, int(week_value)),
                     unsafe_allow_html=True,
                 )
+
+    with st.expander("최적화 설정 정보", expanded=False):
+        st.markdown(
+            f"- 강의실 이동 가중치: `{WEIGHT_ROOM_MOVE:.4f}`\n"
+            f"- 시간 이동 가중치: `{WEIGHT_TIME_MOVE:.4f}`\n"
+            f"- 하루 시험 수 가중치: `{WEIGHT_DAILY:.4f}`\n"
+            f"- 요일 이동 허용 범위: `{D_MAX}`\n"
+            f"- 시간 이동 허용 범위: `{T_MAX}`"
+        )
 
     st.markdown("#### 결과 표")
     st.dataframe(opt_summary_df, use_container_width=True, hide_index=True)
