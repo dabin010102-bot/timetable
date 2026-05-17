@@ -1727,14 +1727,14 @@ def build_optimization_summary_df(payload: dict) -> pd.DataFrame:
         ["가중치(강의실이동)", f"{WEIGHT_ROOM_MOVE:.4f}"],
         ["가중치(시간이동)", f"{WEIGHT_TIME_MOVE:.4f}"],
         ["가중치(하루시험수)", f"{WEIGHT_DAILY:.4f}"],
-        ["요일 이동 한계 D_max", str(D_MAX)],
-        ["시간 이동 한계 T_max", str(T_MAX)],
+        ["시험 집중도 제한(하루 최대 시험 수 기준)", str(D_MAX)],
+        ["시험 집중도 제한(연속 시험 시간 기준)", str(T_MAX)],
         ["강의실 변경 합", str(int(summary.get("room_move_sum", 0)))],
         ["시간 이동 합", str(int(summary.get("time_move_sum", 0)))],
-        ["하루 시험수 벌점 합", str(int(summary.get("daily_penalty_sum", 0)))],
-        ["학생 동시시험 위반", str(int(summary.get("overlap_violation", 0)))],
-        ["같은과목 분반 연속배정 위반", str(int(summary.get("section_overlap_violation", 0)))],
-        ["하루 4시험 위반", str(int(summary.get("daily4_count", 0)))],
+        ["하루 시험 수 증가 합", str(int(summary.get("daily_penalty_sum", 0)))],
+        ["학생 동시시험 충돌", str(int(summary.get("overlap_violation", 0)))],
+        ["같은과목 분반 연속배정 충돌", str(int(summary.get("section_overlap_violation", 0)))],
+        ["하루 4시험 충돌", str(int(summary.get("daily4_count", 0)))],
         ["실행시간(초)", f"{float(summary.get('runtime_sec', 0)):.4f}"],
         ["Gurobi 시간(초)", f"{float(summary.get('gurobi_runtime_sec', 0)):.4f}"],
     ]
@@ -1753,10 +1753,10 @@ def build_verify_df(payload: dict) -> pd.DataFrame:
             "(5)": "학생 동시시험",
             "(5-1)": "같은과목 분반연속배정",
             "(7)": "하루 4시험 금지",
-            "(8)": "벌점정의",
-            "(9)": "강의실변경정의",
-            "(10)": "시간이동정의",
-            "(11)": "최대이동 허용",
+            "(8)": "시험 집중도 계산",
+            "(9)": "강의실 변경 반영",
+            "(10)": "시간 변경 반영",
+            "(11)": "시험 집중도 제한",
         }
         for idx, row in enumerate(rows):
             key = str(row[0]) if len(row) > 0 else f"({idx + 1})"
@@ -2302,14 +2302,14 @@ with st.sidebar:
     if courseen_path is not None:
         st.caption(f"CourseEn 파일: {courseen_path}")
 
-# 전체 요약 카드
-g1, g2, g3, g4, g5 = st.columns(5)
-g1.metric("전체 시험 과목 수", int(display_exam_df["과목"].nunique()))
-used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
-g2.metric("사용/후보 강의실 수", f"{len(used_rooms)}/{len(ROOM_ORDER)}")
-g3.metric("학생 충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
-g4.metric("분반 연속배정 위반", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
-g5.metric("최적화 penalty 점수", f"{float(summary.get('objective', 0)):.4f}")
+if menu != "최적화 결과":
+    g1, g2, g3, g4, g5 = st.columns(5)
+    g1.metric("전체 시험 과목 수", int(display_exam_df["과목"].nunique()))
+    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
+    g2.metric("사용/후보 강의실 수", f"{len(used_rooms)}/{len(ROOM_ORDER)}")
+    g3.metric("학생 충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
+    g4.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
+    g5.metric("전체 배치 점수", f"{float(summary.get('objective', 0)):.4f}")
 
 if menu == "학번별 조회":
     st.subheader("학번별 시험시간표 조회")
@@ -2715,8 +2715,10 @@ elif menu == "이동 시뮬레이터":
                                             warning_items = []
                                             orig_day = int(sel_row["요일번호"])
                                             orig_start = int(sel_row["시작슬롯"])
-                                            if abs(int(dnum) - orig_day) > D_MAX or abs(int(st_slot) - orig_start) > T_MAX:
-                                                warning_items.append("D_MAX/T_MAX 초과")
+                                            if abs(int(dnum) - orig_day) > D_MAX:
+                                                warning_items.append("하루 시험 수 기준 초과")
+                                            if abs(int(st_slot) - orig_start) > T_MAX:
+                                                warning_items.append("연속 시험 시간 기준 초과")
                                             if (int(dnum), int(st_slot)) != (orig_day, orig_start):
                                                 warning_items.append("시간 변경 발생")
                                             if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
@@ -2827,8 +2829,10 @@ elif menu == "이동 시뮬레이터":
                     _badge_html("✅ 학생충돌 없음", "ok"),
                     _badge_html("✅ 강의실중복 없음", "ok"),
                 ]
-                if chosen_meta["dmax_violation"] or chosen_meta["tmax_violation"]:
-                    chosen_badges.append(_badge_html("⚠ D_MAX/T_MAX 초과", "warn"))
+                if chosen_meta["dmax_violation"]:
+                    chosen_badges.append(_badge_html("⚠ 하루 시험 수 기준 초과", "warn"))
+                if chosen_meta["tmax_violation"]:
+                    chosen_badges.append(_badge_html("⚠ 연속 시험 시간 기준 초과", "warn"))
                 if chosen_meta["daily_exam_increase"] > 0:
                     chosen_badges.append(_badge_html("⚠ 하루 시험 수 증가", "warn"))
                 if chosen_meta["time_changed"]:
@@ -2860,8 +2864,10 @@ elif menu == "이동 시뮬레이터":
                         _badge_html("✅ 학생충돌 없음", "ok"),
                         _badge_html("✅ 강의실중복 없음", "ok"),
                     ]
-                    if rr_meta["dmax_violation"] or rr_meta["tmax_violation"]:
-                        badge_parts.append(_badge_html("⚠ D_MAX/T_MAX 초과", "warn"))
+                    if rr_meta["dmax_violation"]:
+                        badge_parts.append(_badge_html("⚠ 하루 시험 수 기준 초과", "warn"))
+                    if rr_meta["tmax_violation"]:
+                        badge_parts.append(_badge_html("⚠ 연속 시험 시간 기준 초과", "warn"))
                     if rr_meta["daily_exam_increase"] > 0:
                         badge_parts.append(_badge_html("⚠ 하루 시험 수 증가", "warn"))
                     if rr_meta["time_changed"]:
@@ -2985,20 +2991,36 @@ elif menu == "변경사항 확인":
     )
 
 elif menu == "최적화 결과":
-    st.subheader("구로비 최적화 결과")
+    st.subheader("최적화 결과")
     if st.session_state.manual_moves:
         st.info("현재 화면에는 수동 변경이 반영되어 있으며, 목적함수 및 제약 검증값은 Gurobi 원본 결과입니다.")
 
-    k1, k2, k3, k4 = st.columns(4)
+    st.markdown("#### 전체 시험 캘린더")
+    overall_exam_df = display_exam_df.copy()
+    week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
+    if not week_values:
+        st.info("표시할 전체 캘린더 데이터가 없습니다.")
+    else:
+        week_tabs = st.tabs([f"Week {w}" for w in week_values])
+        for tab, week_value in zip(week_tabs, week_values):
+            with tab:
+                st.markdown(
+                    build_overall_calendar_html(overall_exam_df, int(week_value)),
+                    unsafe_allow_html=True,
+                )
+
+    used_rooms = set(sum(display_exam_df["강의실목록"].tolist(), []))
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("목적함수값", f"{float(summary.get('objective', 0)):.4f}")
-    k2.metric("강의실 변경 합", int(summary.get("room_move_sum", 0)))
-    k3.metric("시간 이동 합", int(summary.get("time_move_sum", 0)))
-    k4.metric("하루 시험수 벌점 합", int(summary.get("daily_penalty_sum", 0)))
+    k2.metric("총 시험 수", int(display_exam_df["과목"].nunique()))
+    k3.metric("학생충돌 여부", "없음" if int(summary.get("overlap_violation", 0)) == 0 else "있음")
+    k4.metric("사용 강의실 수", len(used_rooms))
+    k5.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
     st.info(
         f"현재 가중치: 강의실이동 {WEIGHT_ROOM_MOVE:.4f} / 시간이동 {WEIGHT_TIME_MOVE:.4f} / 하루시험수 {WEIGHT_DAILY:.4f} | "
-        f"이동제약: D_max={D_MAX}, T_max={T_MAX}"
+        f"시험 집중도 제한: 하루 최대 시험 수 기준 {D_MAX}, 연속 시험 시간 기준 {T_MAX}"
     )
-    st.markdown("#### 목적함수 결과")
+    st.markdown("#### 결과 표")
     st.dataframe(opt_summary_df, use_container_width=True, hide_index=True)
 
     st.markdown("#### 제약식 위반표")
@@ -3023,19 +3045,18 @@ elif menu == "최적화 결과":
                 mime="application/pdf",
             )
 
-    st.markdown("#### 전체 캘린더 보기")
-    overall_exam_df = display_exam_df.copy()
-    week_values = [w for w in [7, 8, 9] if int(w) in set(overall_exam_df["주차"].astype(int).tolist())]
-    if not week_values:
-        st.info("표시할 전체 캘린더 데이터가 없습니다.")
-    else:
-        week_tabs = st.tabs([f"Week {w}" for w in week_values])
-        for tab, week_value in zip(week_tabs, week_values):
-            with tab:
-                st.markdown(
-                    build_overall_calendar_html(overall_exam_df, int(week_value)),
-                    unsafe_allow_html=True,
-                )
+    room_image_paths = []
+    if report_dir is not None:
+        for room in ROOM_ORDER:
+            room_path = report_dir / f"page_room_{room}.png"
+            if room_path.exists():
+                room_image_paths.append((room, room_path))
+    if room_image_paths:
+        st.markdown("#### 강의실별 시각화")
+        room_tabs = st.tabs([f"{room}호" for room, _ in room_image_paths])
+        for room_tab, (room, room_path) in zip(room_tabs, room_image_paths):
+            with room_tab:
+                st.image(str(room_path), use_container_width=True)
 
 
 
