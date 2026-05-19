@@ -364,6 +364,38 @@ st.markdown(
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
     .result-table th {background:#eaf2ff; font-weight:800;}
     .result-table td.change {background:#fff7ed; color:#9a3412 !important; font-weight:800;}
+    .result-table td.status-keep {background:#f0fdf4 !important; color:#166534 !important; font-weight:800;}
+    .result-table td.status-time {background:#fef9c3 !important; color:#854d0e !important; font-weight:800;}
+    .result-table td.status-room {background:#dbeafe !important; color:#1e40af !important; font-weight:800;}
+    .result-table td.status-both {background:#ffedd5 !important; color:#9a3412 !important; font-weight:800;}
+    .change-legend {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin:8px 0 10px 0;
+      font-size:13px;
+      font-weight:800;
+    }
+    .change-legend-item {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:5px 9px;
+      border:1px solid #d8e0ea;
+      border-radius:999px;
+      background:#ffffff;
+    }
+    .change-legend-dot {
+      display:inline-block;
+      width:12px;
+      height:12px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.12);
+    }
+    .change-legend-dot.keep {background:#bbf7d0;}
+    .change-legend-dot.time {background:#fef08a;}
+    .change-legend-dot.room {background:#bfdbfe;}
+    .change-legend-dot.both {background:#fed7aa;}
     .overall-legend {
       display:flex;
       flex-wrap:wrap;
@@ -1992,11 +2024,22 @@ def dataframe_to_html_table(df: pd.DataFrame, highlight_cols: list[str] | None =
 
     for _, row in df.iterrows():
         parts.append("<tr>")
+        row_status = str(row.get("변경상태", "")).strip()
         for col in df.columns:
             val = "" if pd.isna(row[col]) else str(row[col])
             cls = ""
-            if col in highlight_cols and ("변경" in val and val != "유지"):
-                cls = " class='change'"
+            if col in highlight_cols:
+                status_src = row_status if col == "변경상태" else val
+                if status_src == "유지" or val == "유지":
+                    cls = " class='status-keep'"
+                elif "시간+강의실" in status_src or ("시간" in status_src and "강의실" in status_src):
+                    cls = " class='status-both'"
+                elif "시간" in status_src:
+                    cls = " class='status-time'"
+                elif "강의실" in status_src:
+                    cls = " class='status-room'"
+                elif "변경" in val and val != "유지":
+                    cls = " class='change'"
             parts.append(f"<td{cls}>{html.escape(val)}</td>")
         parts.append("</tr>")
     parts.append("</tbody></table></div>")
@@ -2163,7 +2206,7 @@ def build_overall_calendar_html(
 
 def render_calendar_grid(df_student: pd.DataFrame, target_week: int):
     st.markdown(f"#### {target_week}주차 캘린더형 시험시간표")
-    table_html = build_calendar_html(df_student, target_week)
+    table_html = build_overall_calendar_html(df_student, target_week)
     st.markdown(table_html, unsafe_allow_html=True)
 
 
@@ -2627,47 +2670,55 @@ if menu == "개인 조회":
 
     else:
         st.markdown("#### 교수명으로 시험 시간표 검색")
-        professor_options = sorted(
+        all_professor_options = sorted(
             [p for p in display_exam_df.get("교수", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if p and p != "미지정"]
         )
-        if not professor_options:
+        if not all_professor_options:
             st.info("등록된 교수 정보가 없습니다.")
         else:
-            selected_professor = st.selectbox("교수명 선택", professor_options, key="professor_lookup_select")
-            df_professor = display_exam_df[display_exam_df["교수"].astype(str) == str(selected_professor)].copy()
-            df_professor = df_professor.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
-
-            p1, p2 = st.columns(2)
-            p1.metric("담당 시험 수", len(df_professor))
-            p2.metric("담당 과목 수", df_professor["과목명"].nunique() if not df_professor.empty else 0)
-
-            if df_professor.empty:
-                st.info("해당 교수의 담당 시험이 없습니다.")
+            professor_query = st.text_input("교수명 검색", value="", key="professor_lookup_query")
+            professor_options = [
+                name for name in all_professor_options
+                if not professor_query.strip() or professor_query.strip() in name
+            ]
+            if not professor_options:
+                st.info("검색 조건에 맞는 교수가 없습니다.")
             else:
-                st.markdown("#### 담당 과목 목록")
-                st.write(", ".join(df_professor["과목명"].drop_duplicates().astype(str).tolist()))
+                selected_professor = st.selectbox("검색 결과에서 선택", professor_options, key="professor_lookup_select")
+                df_professor = display_exam_df[display_exam_df["교수"].astype(str) == str(selected_professor)].copy()
+                df_professor = df_professor.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
-                week_options = [f"{w}주차" for w in [7, 8, 9] if int(w) in set(df_professor["주차"].astype(int).tolist())]
-                if not week_options:
-                    week_options = ["7주차", "8주차", "9주차"]
-                professor_week_label = st.radio(
-                    "주차 선택",
-                    week_options,
-                    horizontal=True,
-                    key="professor_week_selector_radio",
-                )
-                professor_week = int(str(professor_week_label).replace("주차", ""))
-                render_calendar_grid(df_professor, professor_week)
+                p1, p2 = st.columns(2)
+                p1.metric("담당 시험 수", len(df_professor))
+                p2.metric("담당 과목 수", df_professor["과목명"].nunique() if not df_professor.empty else 0)
 
-                professor_cols = ["교수", "과목명", "주차", "요일", "시작", "종료", "강의실"]
-                for col in professor_cols:
-                    if col not in df_professor.columns:
-                        df_professor[col] = "-"
-                st.markdown("#### 담당 시험 상세 표")
-                st.markdown(
-                    dataframe_to_html_table(df_professor[professor_cols].copy()),
-                    unsafe_allow_html=True,
-                )
+                if df_professor.empty:
+                    st.info("해당 교수의 담당 시험이 없습니다.")
+                else:
+                    st.markdown("#### 담당 과목 목록")
+                    st.write(", ".join(df_professor["과목명"].drop_duplicates().astype(str).tolist()))
+
+                    week_options = [f"{w}주차" for w in [7, 8, 9] if int(w) in set(df_professor["주차"].astype(int).tolist())]
+                    if not week_options:
+                        week_options = ["7주차", "8주차", "9주차"]
+                    professor_week_label = st.radio(
+                        "주차 선택",
+                        week_options,
+                        horizontal=True,
+                        key="professor_week_selector_radio",
+                    )
+                    professor_week = int(str(professor_week_label).replace("주차", ""))
+                    render_calendar_grid(df_professor, professor_week)
+
+                    professor_cols = ["교수", "과목명", "주차", "요일", "시작", "종료", "강의실"]
+                    for col in professor_cols:
+                        if col not in df_professor.columns:
+                            df_professor[col] = "-"
+                    st.markdown("#### 담당 시험 상세 표")
+                    st.markdown(
+                        dataframe_to_html_table(df_professor[professor_cols].copy()),
+                        unsafe_allow_html=True,
+                    )
 elif menu == "이동 시뮬레이터":
     st.subheader("이동 시뮬레이터")
     st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
@@ -3299,6 +3350,17 @@ elif menu == "변경사항 확인":
     ]
 
     view_ch = df_ch[cols].copy()
+    st.markdown(
+        """
+        <div class='change-legend'>
+          <span class='change-legend-item'><span class='change-legend-dot keep'></span>초록 = 유지</span>
+          <span class='change-legend-item'><span class='change-legend-dot time'></span>노랑 = 시간 변경</span>
+          <span class='change-legend-item'><span class='change-legend-dot room'></span>파랑 = 강의실 변경</span>
+          <span class='change-legend-item'><span class='change-legend-dot both'></span>주황 = 시간+강의실 변경</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown(
         dataframe_to_html_table(
             view_ch,
