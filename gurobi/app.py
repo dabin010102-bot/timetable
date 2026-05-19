@@ -305,8 +305,8 @@ st.markdown(
       padding-top:14px;
     }
     .click-grid-exam {
-      background:#dbeafe;
-      border:1px solid #bfdbfe;
+      background:#f1f5f9;
+      border:1px solid #cbd5e1;
       border-radius:6px;
       padding:5px;
       line-height:1.25;
@@ -315,8 +315,8 @@ st.markdown(
       min-height:42px;
     }
     .click-grid-possible {
-      background:#dcfce7;
-      border:1px solid #86efac;
+      background:#ecfdf5;
+      border:1px solid #bbf7d0;
       border-radius:6px;
       padding:5px;
       line-height:1.25;
@@ -326,7 +326,7 @@ st.markdown(
       min-height:42px;
     }
     .click-grid-selected-move {
-      background:#dbeafe;
+      background:#eff6ff;
       border:2px solid #2563eb;
       border-radius:6px;
       padding:5px;
@@ -337,7 +337,7 @@ st.markdown(
       min-height:42px;
     }
     .click-grid-cont {
-      background:#eff6ff;
+      background:#f8fafc;
       border-radius:4px;
       min-height:42px;
     }
@@ -363,7 +363,7 @@ st.markdown(
     .result-table {width:100%; border-collapse:collapse; font-size:14px; background:#ffffff;}
     .result-table th, .result-table td {border:1px solid #d8e0ea; padding:8px 10px; text-align:left; color:#0b1220 !important;}
     .result-table th {background:#eaf2ff; font-weight:800;}
-    .result-table td.change {background:#ffe3e3; color:#7f1d1d !important; font-weight:800;}
+    .result-table td.change {background:#fff7ed; color:#9a3412 !important; font-weight:800;}
     .overall-legend {
       display:flex;
       flex-wrap:wrap;
@@ -385,10 +385,10 @@ st.markdown(
       border:1px solid rgba(15,23,42,.12);
       flex:0 0 auto;
     }
-    .overall-grade-1 {background:#dbeafe;}
-    .overall-grade-2 {background:#dcfce7;}
-    .overall-grade-3 {background:#ffedd5;}
-    .overall-grade-4 {background:#fee2e2;}
+    .overall-grade-1 {background:#f8fafc; border-left:4px solid #93c5fd !important;}
+    .overall-grade-2 {background:#f8fafc; border-left:4px solid #86efac !important;}
+    .overall-grade-3 {background:#f8fafc; border-left:4px solid #fdba74 !important;}
+    .overall-grade-4 {background:#f8fafc; border-left:4px solid #fca5a5 !important;}
     .overall-grade-x {background:#e5e7eb;}
     .overall-calendar-wrap table {
       min-width: 1280px;
@@ -608,19 +608,19 @@ st.markdown(
       box-sizing:border-box;
     }
     .sim-badge.ok {
-      background:#dcfce7;
+      background:#f0fdf4;
       color:#166534 !important;
-      border:1px solid #86efac;
+      border:1px solid #bbf7d0;
     }
     .sim-badge.warn {
-      background:#fef3c7;
+      background:#fffbeb;
       color:#92400e !important;
-      border:1px solid #fcd34d;
+      border:1px solid #fde68a;
     }
     .sim-badge.risk {
-      background:#fee2e2;
+      background:#fef2f2;
       color:#991b1b !important;
-      border:1px solid #fca5a5;
+      border:1px solid #fecaca;
     }
     </style>
     """,
@@ -1872,8 +1872,8 @@ def build_decision_df(payload: dict, exam_df: pd.DataFrame) -> pd.DataFrame:
     out["과목명"] = fallback["과목명"]
     out["x_iwdt"] = fallback.apply(lambda r: f"({int(r['주차'])}, {str(r['요일'])}, {str(r['시작'])})", axis=1)
     out["z_iwdtr"] = fallback["강의실"]
-    out["TimeMove_i"] = fallback["TimeMove_i"]
-    out["RoomChange_i"] = fallback["RoomChange_i"]
+    out["TC"] = fallback["TimeMove_i"]
+    out["RC"] = fallback["RoomChange_i"]
     return out.reset_index(drop=True)
 
 
@@ -3147,6 +3147,7 @@ elif menu == "최적화 결과":
 
     st.markdown("#### 결정변수 결과")
     st.dataframe(decision_df, use_container_width=True, hide_index=True)
+    st.caption("TC: 시간 변경 여부 / RC: 강의실 변경 여부")
     st.download_button(
         "결정변수 결과 다운로드(CSV)",
         data=decision_df.to_csv(index=False).encode("utf-8-sig"),
