@@ -712,6 +712,52 @@ COURSE_GRADE_FALLBACK = {
     "SmartMfg&Auto": "4",
 }
 
+PROFESSOR_EXACT_FALLBACK = {
+    "Calculus(1)-1": "이미혜",
+    "Calculus(1)-2": "정유정",
+    "대학수학(1)-1": "이미혜",
+    "대학수학(1)-2": "정유정",
+}
+
+PROFESSOR_BASE_FALLBACK = {
+    "IntroIE&M": "장석화",
+    "산업경영공학개론": "장석화",
+    "GenAIApps": "이준혁",
+    "생성형AI활용": "이준혁",
+    "생성형AI응용": "이준혁",
+    "Prob&Stats(1)": "류도현",
+    "확률과통계": "류도현",
+    "확률및통계(1)": "류도현",
+    "Det.ManageSci": "이종헌",
+    "확정적경영과학": "이종헌",
+    "Ergonomics": "최서빈",
+    "인간공학": "최서빈",
+    "Database": "이세린",
+    "데이터베이스": "이세린",
+    "ProdDevProcess": "박기정",
+    "제품개발프로세스": "박기정",
+    "QualityEng": "정영배",
+    "품질공학": "정영배",
+    "IntroFinEng": "정지혁",
+    "금융공학개론": "정지혁",
+    "Optim&Apps": "이종헌",
+    "최적화모델링응용": "이종헌",
+    "최적화모형및응용": "이종헌",
+    "ProdControl": "김병수",
+    "생산통제": "김병수",
+    "DataMining": "류도현",
+    "데이터마이닝": "류도현",
+    "SmartMfg&Auto": "김성균",
+    "스마트제조자동화": "김성균",
+    "스마트제조및자동화": "김성균",
+    "ReinforcLearn": "정지혁",
+    "강화학습": "정지혁",
+    "SmartLogistics": "이준혁",
+    "스마트물류": "이준혁",
+    "Corp&Safety": "김철홍",
+    "기업과안전": "김철홍",
+}
+
 
 # -------------------------------------------------
 # 유틸
@@ -749,6 +795,43 @@ def to_korean_course_name(course: str) -> str:
         if normalize_name(eng) == normalize_name(base_key):
             return f"{kor}{section}"
     return raw
+
+
+def professor_for_course(course: str, base_key: str | None = None, course_name: str | None = None) -> str:
+    exact_candidates = [course, course_name or "", to_korean_course_name(course)]
+    for cand in exact_candidates:
+        cand_norm = normalize_exact(cand)
+        for key, professor in PROFESSOR_EXACT_FALLBACK.items():
+            if cand_norm == normalize_exact(key):
+                return professor
+
+    base_candidates = [
+        base_key or "",
+        re.sub(r"[-_]\d+$", "", str(course or "").strip()),
+        re.sub(r"[-_]\d+$", "", str(course_name or "").strip()),
+        re.sub(r"[-_]\d+$", "", to_korean_course_name(course)),
+    ]
+    for cand in base_candidates:
+        cand_norm = normalize_name(cand)
+        for key, professor in PROFESSOR_BASE_FALLBACK.items():
+            if cand_norm == normalize_name(key):
+                return professor
+    return "미지정"
+
+
+def ensure_professor_column(df_src: pd.DataFrame) -> pd.DataFrame:
+    out = df_src.copy()
+    if "교수" not in out.columns:
+        out["교수"] = "미지정"
+    for idx, row in out.iterrows():
+        professor = str(row.get("교수", "")).strip()
+        if not professor or professor == "미지정" or professor.lower() == "nan":
+            out.at[idx, "교수"] = professor_for_course(
+                str(row.get("과목", "")),
+                str(row.get("기준과목", "")),
+                str(row.get("과목명", "")),
+            )
+    return out
 
 
 def fallback_grade_for_course(course: str) -> str:
@@ -868,6 +951,7 @@ def build_exam_df(payload: dict) -> pd.DataFrame:
                 "과목": ex["name"],
                 "기준과목": ex.get("base_key", normalize_name(ex["name"])),
                 "과목명": to_korean_course_name(ex["name"]),
+                "교수": professor_for_course(ex["name"], ex.get("base_key", ""), to_korean_course_name(ex["name"])),
                 "정규과목": normalize_name(ex["name"]),
                 "주차": week,
                 "요일번호": dow,
@@ -2360,9 +2444,11 @@ orig_maps = build_original_map(df_ot)
 grade_map = build_grade_map_from_courseen(df_courseen)
 base_exam_df = add_change_columns(exam_df.copy(), orig_maps, grade_map)
 base_exam_df = fill_missing_grade(base_exam_df, grade_map)
+base_exam_df = ensure_professor_column(base_exam_df)
 display_exam_df = apply_manual_moves(base_exam_df, st.session_state.manual_moves)
 display_exam_df = add_change_columns(display_exam_df, orig_maps, grade_map)
 display_exam_df = fill_missing_grade(display_exam_df, grade_map)
+display_exam_df = ensure_professor_column(display_exam_df)
 opt_summary_df = build_optimization_summary_df(payload)
 verify_df = build_verify_df(payload)
 decision_df = build_decision_df(payload, display_exam_df)
@@ -2390,7 +2476,7 @@ st.markdown(
 
 with st.sidebar:
     st.header("메뉴")
-    menu = st.radio("페이지 선택", ["최적화 결과", "학번별 조회", "이동 시뮬레이터", "변경사항 확인"], index=0)
+    menu = st.radio("페이지 선택", ["최적화 결과", "개인 조회", "이동 시뮬레이터", "변경사항 확인"], index=0)
     st.markdown("---")
     st.caption(f"결과 파일: {payload_path}")
     st.caption(f"IS 파일: {is_path}")
@@ -2408,130 +2494,180 @@ if menu != "최적화 결과":
     g4.metric("분반 연속배정 충돌", "없음" if int(summary.get("section_overlap_violation", 0)) == 0 else "있음")
     g5.metric("전체 배치 점수", f"{float(summary.get('objective', 0)):.4f}")
 
-if menu == "학번별 조회":
-    st.subheader("학번별 시험시간표 조회")
+if menu == "개인 조회":
+    st.subheader("개인 조회")
+    lookup_type = st.radio(
+        "조회 유형",
+        ["학번으로 시험 시간표 검색", "교수명으로 시험 시간표 검색"],
+        horizontal=True,
+        key="personal_lookup_type",
+    )
 
-    if "searched_sid" not in st.session_state:
-        st.session_state.searched_sid = ""
-    if "search_ok" not in st.session_state:
-        st.session_state.search_ok = False
+    if lookup_type == "학번으로 시험 시간표 검색":
 
-    with st.form("search_form"):
-        sid_input = st.text_input("학번 입력", value=st.session_state.searched_sid)
-        submitted = st.form_submit_button("검색")
-
-    if submitted:
-        sid = sid_input.strip()
-        if not sid:
+        if "searched_sid" not in st.session_state:
+            st.session_state.searched_sid = ""
+        if "search_ok" not in st.session_state:
             st.session_state.search_ok = False
-            st.warning("학번을 입력하세요.")
-        else:
-            row_idx_tmp = find_student_row(df_is, sid)
-            if row_idx_tmp is None:
+
+        with st.form("search_form"):
+            sid_input = st.text_input("학번 입력", value=st.session_state.searched_sid)
+            submitted = st.form_submit_button("검색")
+
+        if submitted:
+            sid = sid_input.strip()
+            if not sid:
                 st.session_state.search_ok = False
-                st.warning("검색 결과가 없습니다. 학번을 다시 확인하세요.")
+                st.warning("학번을 입력하세요.")
             else:
-                st.session_state.searched_sid = sid
-                st.session_state.search_ok = True
-                if "selected_week" not in st.session_state:
-                    st.session_state.selected_week = 7
+                row_idx_tmp = find_student_row(df_is, sid)
+                if row_idx_tmp is None:
+                    st.session_state.search_ok = False
+                    st.warning("검색 결과가 없습니다. 학번을 다시 확인하세요.")
+                else:
+                    st.session_state.searched_sid = sid
+                    st.session_state.search_ok = True
+                    if "selected_week" not in st.session_state:
+                        st.session_state.selected_week = 7
 
-    if st.session_state.search_ok and st.session_state.searched_sid:
-        sid = st.session_state.searched_sid
-        row_idx = find_student_row(df_is, sid)
-        if row_idx is not None:
-            df_student = student_exam_df(display_exam_df, df_is, row_idx)
-            df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
-            df_student = fill_missing_grade(df_student, grade_map)
+        if st.session_state.search_ok and st.session_state.searched_sid:
+            sid = st.session_state.searched_sid
+            row_idx = find_student_row(df_is, sid)
+            if row_idx is not None:
+                df_student = student_exam_df(display_exam_df, df_is, row_idx)
+                df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
+                df_student = fill_missing_grade(df_student, grade_map)
 
-            student_summary_cards(df_student)
+                student_summary_cards(df_student)
 
-            week_label = st.radio(
-                "주차 선택",
-                ["7주차", "8주차", "9주차"],
-                horizontal=True,
-                key="week_selector_radio",
-            )
-            cur_week = int(str(week_label).replace("주차", ""))
-            st.markdown(f"### 현재 페이지: {cur_week}주차")
-            try:
-                render_calendar_grid(df_student, cur_week)
-            except Exception:
-                st.warning("해당 주차 렌더링 중 문제가 있어 빈 시간표로 표시합니다.")
-                render_calendar_grid(pd.DataFrame(columns=df_student.columns), cur_week)
-
-            st.markdown("#### 시험 상세 표")
-            show_cols = [
-                "과목명", "학년", "주차", "요일", "날짜", "시작", "종료", "시험시간(분)", "강의실",
-                "원래시간(내분반)", "원래강의실(내분반)", "시간변경여부", "강의실변경여부",
-            ]
-            for col in show_cols:
-                if col not in df_student.columns:
-                    df_student[col] = "-"
-            view_df = df_student[show_cols].copy()
-            st.markdown(
-                dataframe_to_html_table(
-                    view_df,
-                    highlight_cols=["시간변경여부", "강의실변경여부"],
-                ),
-                unsafe_allow_html=True,
-            )
-
-            # 개인 시간표 저장
-            png_bytes = make_student_calendar_png(df_student, sid)
-            if png_bytes is not None:
-                st.download_button(
-                    "캘린더 이미지 저장(PNG, 전체 주차)",
-                    data=png_bytes,
-                    file_name=f"student_{sid}_calendar.png",
-                    mime="image/png",
+                week_label = st.radio(
+                    "주차 선택",
+                    ["7주차", "8주차", "9주차"],
+                    horizontal=True,
+                    key="week_selector_radio",
                 )
-            st.download_button(
-                "시간표 CSV 저장",
-                data=df_student[show_cols].to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"student_{sid}_timetable.csv",
-                mime="text/csv",
-            )
-            st.download_button(
-                "캘린더(.ics) 저장",
-                data=make_student_calendar_ics(df_student, sid),
-                file_name=f"student_{sid}_exam_calendar.ics",
-                mime="text/calendar",
-            )
-            st.caption("iPhone에서는 ICS 미리보기 대신 아래 Google Calendar 링크로 바로 추가할 수도 있습니다.")
+                cur_week = int(str(week_label).replace("주차", ""))
+                st.markdown(f"### 현재 페이지: {cur_week}주차")
+                try:
+                    render_calendar_grid(df_student, cur_week)
+                except Exception:
+                    st.warning("해당 주차 렌더링 중 문제가 있어 빈 시간표로 표시합니다.")
+                    render_calendar_grid(pd.DataFrame(columns=df_student.columns), cur_week)
 
-            st.markdown("#### Google Calendar 바로 추가")
-            for _, row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
-                gc_url = make_google_calendar_url(row, sid)
-                left_gc, right_gc = st.columns([4, 1.3])
-                with left_gc:
-                    st.markdown(
-                        f"**{row['과목명']}**  \n"
-                        f"{row['요일']} {row['시작']}~{row['종료']} / {row['강의실']}"
+                st.markdown("#### 시험 상세 표")
+                show_cols = [
+                    "과목명", "학년", "주차", "요일", "날짜", "시작", "종료", "시험시간(분)", "강의실",
+                    "원래시간(내분반)", "원래강의실(내분반)", "시간변경여부", "강의실변경여부",
+                ]
+                for col in show_cols:
+                    if col not in df_student.columns:
+                        df_student[col] = "-"
+                view_df = df_student[show_cols].copy()
+                st.markdown(
+                    dataframe_to_html_table(
+                        view_df,
+                        highlight_cols=["시간변경여부", "강의실변경여부"],
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+                # 개인 시간표 저장
+                png_bytes = make_student_calendar_png(df_student, sid)
+                if png_bytes is not None:
+                    st.download_button(
+                        "캘린더 이미지 저장(PNG, 전체 주차)",
+                        data=png_bytes,
+                        file_name=f"student_{sid}_calendar.png",
+                        mime="image/png",
                     )
-                with right_gc:
-                    st.markdown(f"[Google Calendar에 추가]({gc_url})")
+                st.download_button(
+                    "시간표 CSV 저장",
+                    data=df_student[show_cols].to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"student_{sid}_timetable.csv",
+                    mime="text/csv",
+                )
+                st.download_button(
+                    "캘린더(.ics) 저장",
+                    data=make_student_calendar_ics(df_student, sid),
+                    file_name=f"student_{sid}_exam_calendar.ics",
+                    mime="text/calendar",
+                )
+                st.caption("iPhone에서는 ICS 미리보기 대신 아래 Google Calendar 링크로 바로 추가할 수도 있습니다.")
 
-            # 해석 문구
-            total_n = len(df_student)
-            max_day = int(df_student.groupby(["주차", "요일", "날짜"]).size().max()) if total_n else 0
-            changed_n = int(
-                (
-                    (df_student["시간변경여부"] == "시간 변경")
-                    | (df_student["강의실변경여부"] == "강의실 변경")
-                ).sum()
-            ) if total_n else 0
-            dfx = df_student.sort_values("start_dt")[["start_dt", "end_dt"]].reset_index(drop=True)
-            has_consec = any(dfx.loc[i, "end_dt"] == dfx.loc[i + 1, "start_dt"] for i in range(max(0, len(dfx)-1)))
+                st.markdown("#### Google Calendar 바로 추가")
+                for _, row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
+                    gc_url = make_google_calendar_url(row, sid)
+                    left_gc, right_gc = st.columns([4, 1.3])
+                    with left_gc:
+                        st.markdown(
+                            f"**{row['과목명']}**  \n"
+                            f"{row['요일']} {row['시작']}~{row['종료']} / {row['강의실']}"
+                        )
+                    with right_gc:
+                        st.markdown(f"[Google Calendar에 추가]({gc_url})")
 
-            st.info(
-                f"해당 학생은 총 {total_n}개의 시험이 배정되었습니다. "
-                f"하루 최대 시험 수는 {max_day}개입니다. "
-                f"연속 시험은 {'있습니다' if has_consec else '없습니다'}. "
-                f"내 분반 기준 원래 시간/강의실 대비 변경된 과목은 {changed_n}개입니다."
-            )
+                # 해석 문구
+                total_n = len(df_student)
+                max_day = int(df_student.groupby(["주차", "요일", "날짜"]).size().max()) if total_n else 0
+                changed_n = int(
+                    (
+                        (df_student["시간변경여부"] == "시간 변경")
+                        | (df_student["강의실변경여부"] == "강의실 변경")
+                    ).sum()
+                ) if total_n else 0
+                dfx = df_student.sort_values("start_dt")[["start_dt", "end_dt"]].reset_index(drop=True)
+                has_consec = any(dfx.loc[i, "end_dt"] == dfx.loc[i + 1, "start_dt"] for i in range(max(0, len(dfx)-1)))
 
+                st.info(
+                    f"해당 학생은 총 {total_n}개의 시험이 배정되었습니다. "
+                    f"하루 최대 시험 수는 {max_day}개입니다. "
+                    f"연속 시험은 {'있습니다' if has_consec else '없습니다'}. "
+                    f"내 분반 기준 원래 시간/강의실 대비 변경된 과목은 {changed_n}개입니다."
+                )
 
+    else:
+        st.markdown("#### 교수명으로 시험 시간표 검색")
+        professor_options = sorted(
+            [p for p in display_exam_df.get("교수", pd.Series(dtype=str)).dropna().astype(str).unique().tolist() if p and p != "미지정"]
+        )
+        if not professor_options:
+            st.info("등록된 교수 정보가 없습니다.")
+        else:
+            selected_professor = st.selectbox("교수명 선택", professor_options, key="professor_lookup_select")
+            df_professor = display_exam_df[display_exam_df["교수"].astype(str) == str(selected_professor)].copy()
+            df_professor = df_professor.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+
+            p1, p2 = st.columns(2)
+            p1.metric("담당 시험 수", len(df_professor))
+            p2.metric("담당 과목 수", df_professor["과목명"].nunique() if not df_professor.empty else 0)
+
+            if df_professor.empty:
+                st.info("해당 교수의 담당 시험이 없습니다.")
+            else:
+                st.markdown("#### 담당 과목 목록")
+                st.write(", ".join(df_professor["과목명"].drop_duplicates().astype(str).tolist()))
+
+                week_options = [f"{w}주차" for w in [7, 8, 9] if int(w) in set(df_professor["주차"].astype(int).tolist())]
+                if not week_options:
+                    week_options = ["7주차", "8주차", "9주차"]
+                professor_week_label = st.radio(
+                    "주차 선택",
+                    week_options,
+                    horizontal=True,
+                    key="professor_week_selector_radio",
+                )
+                professor_week = int(str(professor_week_label).replace("주차", ""))
+                render_calendar_grid(df_professor, professor_week)
+
+                professor_cols = ["교수", "과목명", "주차", "요일", "시작", "종료", "강의실"]
+                for col in professor_cols:
+                    if col not in df_professor.columns:
+                        df_professor[col] = "-"
+                st.markdown("#### 담당 시험 상세 표")
+                st.markdown(
+                    dataframe_to_html_table(df_professor[professor_cols].copy()),
+                    unsafe_allow_html=True,
+                )
 elif menu == "이동 시뮬레이터":
     st.subheader("이동 시뮬레이터")
     st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
