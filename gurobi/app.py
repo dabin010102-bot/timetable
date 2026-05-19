@@ -1147,12 +1147,18 @@ def score_move_impact(
     new_time_move = base_time_move - int(trow.get("TimeMove_i", 0)) + time_changed
     new_room_move = base_room_move - int(trow.get("RoomChange_i", 0)) + room_changed
     new_daily_penalty = base_daily_penalty - daily_before + daily_after
+    room_change_delta = new_room_move - base_room_move
+    time_move_delta = new_time_move - base_time_move
+    daily_penalty_delta = new_daily_penalty - base_daily_penalty
 
-    new_obj = (
-        WEIGHT_ROOM_MOVE * new_room_move
-        + WEIGHT_TIME_MOVE * new_time_move
-        + WEIGHT_DAILY * new_daily_penalty
+    objective_delta = (
+        WEIGHT_ROOM_MOVE * room_change_delta
+        + WEIGHT_TIME_MOVE * time_move_delta
+        + WEIGHT_DAILY * daily_penalty_delta
     )
+    if abs(objective_delta) <= 1e-6:
+        objective_delta = 0.0
+    new_obj = base_obj + objective_delta
 
     return {
         "feasible": True,
@@ -1160,11 +1166,12 @@ def score_move_impact(
         "student_conflict_count": 0,
         "daily3_increase": after_3 - before_3,
         "daily4_increase": after_4 - before_4,
-        "room_change_delta": new_room_move - base_room_move,
-        "time_move_delta": new_time_move - base_time_move,
+        "daily_penalty_delta": daily_penalty_delta,
+        "room_change_delta": room_change_delta,
+        "time_move_delta": time_move_delta,
         "objective_before": base_obj,
         "objective_after": new_obj,
-        "objective_delta": new_obj - base_obj,
+        "objective_delta": objective_delta,
     }
 
 
@@ -2637,13 +2644,18 @@ elif menu == "이동 시뮬레이터":
         dmax_violation = abs(new_day - old_day) > D_MAX
         tmax_violation = abs(new_start - old_start) > T_MAX
         objective_delta = float(row.get("목적함수변화", row.get("objective_delta", 0.0)))
+        if abs(objective_delta) <= 1e-6:
+            objective_delta = 0.0
         return {
             "time_changed": bool(row.get("time_changed", time_changed)),
             "room_changed": bool(row.get("room_changed", room_changed)),
             "daily_exam_increase": int(row.get("daily_exam_increase", daily_change)),
+            "daily_penalty_delta": int(row.get("daily_penalty_delta", 0)),
+            "room_change_delta": int(row.get("room_change_delta", 1 if room_changed else 0)),
+            "time_move_delta": int(row.get("time_move_delta", 1 if time_changed else 0)),
             "dmax_violation": bool(row.get("dmax_violation", dmax_violation)),
             "tmax_violation": bool(row.get("tmax_violation", tmax_violation)),
-            "objective_increase": objective_delta > 0,
+            "objective_increase": objective_delta > 1e-6,
             "objective_delta": objective_delta,
         }
 
@@ -2661,6 +2673,13 @@ elif menu == "이동 시뮬레이터":
 
     def _badge_html(label: str, level: str) -> str:
         return f"<span class='sim-badge {level}'>{html.escape(label)}</span>"
+
+    def _objective_status_text(objective_delta: float) -> str:
+        if objective_delta > 1e-6:
+            return f"목적함수 증가 (Δ {objective_delta:+.4f})"
+        if objective_delta < -1e-6:
+            return f"목적함수 감소 (Δ {objective_delta:+.4f})"
+        return "목적함수 변화 없음 (Δ +0.0000)"
 
     with st.container():
         st.markdown("#### 이동 설정")
@@ -2815,7 +2834,7 @@ elif menu == "이동 시뮬레이터":
                                                 warning_items.append("강의실 변경 발생")
                                             if int(out_eval.get("daily3_increase", 0)) > 0 or int(out_eval.get("daily4_increase", 0)) > 0:
                                                 warning_items.append("하루 시험 수 증가")
-                                            if float(out_eval.get("objective_delta", 0.0)) > 0:
+                                            if float(out_eval.get("objective_delta", 0.0)) > 1e-6:
                                                 warning_items.append("목적함수 증가")
 
                                             move_candidates.append(
@@ -2830,6 +2849,9 @@ elif menu == "이동 시뮬레이터":
                                                     "하루3개증가": int(out_eval.get("daily3_increase", 0)),
                                                     "하루4개증가": int(out_eval.get("daily4_increase", 0)),
                                                     "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
+                                                    "daily_penalty_delta": int(out_eval.get("daily_penalty_delta", 0)),
+                                                    "room_change_delta": int(out_eval.get("room_change_delta", 0)),
+                                                    "time_move_delta": int(out_eval.get("time_move_delta", 0)),
                                                     "경고": ", ".join(warning_items) if warning_items else "-",
                                                     "week": int(week),
                                                     "dnum": int(dnum),
@@ -2939,8 +2961,10 @@ elif menu == "이동 시뮬레이터":
                     f"<div class='sim-card-line'>이동 시간: {html.escape(tday)} {html.escape(tstart)}~{html.escape(str(chosen_row['종료']))}</div>"
                     f"<div class='sim-card-line'>강의실: {html.escape(str(chosen_row['강의실']))}</div>"
                     f"<div class='sim-card-line'>강제제약 통과 여부: 통과</div>"
-                    f"<div class='sim-card-line'>목적함수 변화량 Δ: {chosen_meta['objective_delta']:+.4f}</div>"
+                    f"<div class='sim-card-line'>{html.escape(_objective_status_text(chosen_meta['objective_delta']))}</div>"
                     f"<div class='sim-card-line'>하루 시험 수 변화: {chosen_meta['daily_exam_increase']:+d}</div>"
+                    f"<div class='sim-card-line'>시간 변경 여부: {'예' if chosen_meta['time_changed'] else '아니오'}</div>"
+                    f"<div class='sim-card-line'>강의실 변경 여부: {'예' if chosen_meta['room_changed'] else '아니오'}</div>"
                     f"<div class='sim-badges'>{''.join(chosen_badges)}</div>"
                     "</div>",
                     unsafe_allow_html=True,
@@ -2972,7 +2996,7 @@ elif menu == "이동 시뮬레이터":
                         f"<div class='sim-card-title'>추천 {rank}위</div>"
                         f"<div class='sim-card-line'>이동 시간: {html.escape(str(rr['요일']))} {html.escape(str(rr['시작']))}~{html.escape(str(rr['종료']))}</div>"
                         f"<div class='sim-card-line'>강의실: {html.escape(str(rr['강의실']))}</div>"
-                        f"<div class='sim-card-line'>목적함수 변화량 Δ: {float(rr['목적함수변화']):+.4f}</div>"
+                        f"<div class='sim-card-line'>{html.escape(_objective_status_text(rr_meta['objective_delta']))}</div>"
                         f"<div class='sim-card-line'>하루 시험 수 변화: {rr_meta['daily_exam_increase']:+d}</div>"
                         f"<div class='sim-card-line'>시간 변경 여부: {'예' if rr_meta['time_changed'] else '아니오'}</div>"
                         f"<div class='sim-card-line'>강의실 변경 여부: {'예' if rr_meta['room_changed'] else '아니오'}</div>"
