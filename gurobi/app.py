@@ -2643,21 +2643,59 @@ elif menu == "이동 시뮬레이터":
         room_changed = old_rooms != new_rooms
         dmax_violation = abs(new_day - old_day) > D_MAX
         tmax_violation = abs(new_start - old_start) > T_MAX
-        objective_delta = float(row.get("목적함수변화", row.get("objective_delta", 0.0)))
+        room_change_delta = int(row.get("room_change_delta", 1 if room_changed else 0))
+        time_move_delta = int(row.get("time_move_delta", 1 if time_changed else 0))
+        daily_penalty_delta = int(row.get("daily_penalty_delta", 0))
+        objective_delta = (
+            WEIGHT_ROOM_MOVE * room_change_delta
+            + WEIGHT_TIME_MOVE * time_move_delta
+            + WEIGHT_DAILY * daily_penalty_delta
+        )
+        if room_change_delta == 0 and time_move_delta == 0 and daily_penalty_delta == 0:
+            objective_delta = 0.0
         if abs(objective_delta) <= 1e-6:
             objective_delta = 0.0
         return {
             "time_changed": bool(row.get("time_changed", time_changed)),
             "room_changed": bool(row.get("room_changed", room_changed)),
             "daily_exam_increase": int(row.get("daily_exam_increase", daily_change)),
-            "daily_penalty_delta": int(row.get("daily_penalty_delta", 0)),
-            "room_change_delta": int(row.get("room_change_delta", 1 if room_changed else 0)),
-            "time_move_delta": int(row.get("time_move_delta", 1 if time_changed else 0)),
+            "daily_penalty_delta": daily_penalty_delta,
+            "room_change_delta": room_change_delta,
+            "time_move_delta": time_move_delta,
             "dmax_violation": bool(row.get("dmax_violation", dmax_violation)),
             "tmax_violation": bool(row.get("tmax_violation", tmax_violation)),
             "objective_increase": objective_delta > 1e-6,
             "objective_delta": objective_delta,
         }
+
+    def _is_same_assignment(row_like, current_row) -> bool:
+        row = row_like.to_dict() if hasattr(row_like, "to_dict") else dict(row_like)
+        current_rooms = sorted(int(x) for x in normalize_room_choice(current_row["강의실목록"]))
+        candidate_rooms = sorted(int(x) for x in normalize_room_choice(row.get("room_combo", row.get("강의실", []))))
+        return (
+            int(row.get("week", current_row["주차"])) == int(current_row["주차"])
+            and int(row.get("dnum", current_row["요일번호"])) == int(current_row["요일번호"])
+            and int(row.get("slot", current_row["시작슬롯"])) == int(current_row["시작슬롯"])
+            and candidate_rooms == current_rooms
+        )
+
+    def _candidate_sort_key(row_like, current_row):
+        row = row_like.to_dict() if hasattr(row_like, "to_dict") else dict(row_like)
+        meta = _candidate_meta(row, current_row)
+        distance = int(
+            row.get(
+                "distance_from_current",
+                abs(int(row.get("dnum", current_row["요일번호"])) - int(current_row["요일번호"]))
+                + abs(int(row.get("slot", current_row["시작슬롯"])) - int(current_row["시작슬롯"])),
+            )
+        )
+        return (
+            float(meta["objective_delta"]),
+            int(meta["daily_exam_increase"]),
+            int(bool(meta["time_changed"])),
+            int(bool(meta["room_changed"])),
+            distance,
+        )
 
     def _candidate_reason_text(meta: dict) -> str:
         reasons = []
@@ -2824,17 +2862,42 @@ elif menu == "이동 시뮬레이터":
                                             warning_items = []
                                             orig_day = int(sel_row["요일번호"])
                                             orig_start = int(sel_row["시작슬롯"])
+                                            current_room_set = set(int(x) for x in normalize_room_choice(sel_row["강의실목록"]))
+                                            candidate_room_set = set(int(x) for x in normalize_room_choice(room_combo))
+                                            if (
+                                                int(week) == int(sel_row["주차"])
+                                                and int(dnum) == orig_day
+                                                and int(st_slot) == orig_start
+                                                and sorted(candidate_room_set) == sorted(current_room_set)
+                                            ):
+                                                continue
+                                            room_change_delta = int(out_eval.get("room_change_delta", 0))
+                                            time_move_delta = int(out_eval.get("time_move_delta", 0))
+                                            daily_penalty_delta = int(out_eval.get("daily_penalty_delta", 0))
+                                            objective_delta = (
+                                                WEIGHT_ROOM_MOVE * room_change_delta
+                                                + WEIGHT_TIME_MOVE * time_move_delta
+                                                + WEIGHT_DAILY * daily_penalty_delta
+                                            )
+                                            if room_change_delta == 0 and time_move_delta == 0 and daily_penalty_delta == 0:
+                                                objective_delta = 0.0
+                                            if abs(objective_delta) <= 1e-6:
+                                                objective_delta = 0.0
+                                            time_changed = (int(dnum), int(st_slot)) != (orig_day, orig_start)
+                                            room_changed = candidate_room_set != current_room_set
+                                            daily_exam_increase = int(out_eval.get("daily3_increase", 0)) + int(out_eval.get("daily4_increase", 0))
+                                            distance_from_current = abs(int(dnum) - orig_day) + abs(int(st_slot) - orig_start)
                                             if abs(int(dnum) - orig_day) > D_MAX:
                                                 warning_items.append("하루 시험 수 기준 초과")
                                             if abs(int(st_slot) - orig_start) > T_MAX:
                                                 warning_items.append("연속 시험 시간 기준 초과")
-                                            if (int(dnum), int(st_slot)) != (orig_day, orig_start):
+                                            if time_changed:
                                                 warning_items.append("시간 변경 발생")
-                                            if set(room_combo) != set(int(x) for x in sel_row["강의실목록"]):
+                                            if room_changed:
                                                 warning_items.append("강의실 변경 발생")
-                                            if int(out_eval.get("daily3_increase", 0)) > 0 or int(out_eval.get("daily4_increase", 0)) > 0:
+                                            if daily_exam_increase > 0:
                                                 warning_items.append("하루 시험 수 증가")
-                                            if float(out_eval.get("objective_delta", 0.0)) > 1e-6:
+                                            if objective_delta > 1e-6:
                                                 warning_items.append("목적함수 증가")
 
                                             move_candidates.append(
@@ -2848,10 +2911,14 @@ elif menu == "이동 시뮬레이터":
                                                     "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
                                                     "하루3개증가": int(out_eval.get("daily3_increase", 0)),
                                                     "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                                    "목적함수변화": float(out_eval.get("objective_delta", 0.0)),
-                                                    "daily_penalty_delta": int(out_eval.get("daily_penalty_delta", 0)),
-                                                    "room_change_delta": int(out_eval.get("room_change_delta", 0)),
-                                                    "time_move_delta": int(out_eval.get("time_move_delta", 0)),
+                                                    "목적함수변화": float(objective_delta),
+                                                    "daily_exam_increase": int(daily_exam_increase),
+                                                    "daily_penalty_delta": int(daily_penalty_delta),
+                                                    "room_change_delta": int(room_change_delta),
+                                                    "time_move_delta": int(time_move_delta),
+                                                    "time_changed": bool(time_changed),
+                                                    "room_changed": bool(room_changed),
+                                                    "distance_from_current": int(distance_from_current),
                                                     "경고": ", ".join(warning_items) if warning_items else "-",
                                                     "week": int(week),
                                                     "dnum": int(dnum),
@@ -2874,7 +2941,7 @@ elif menu == "이동 시뮬레이터":
                                 break
                     move_candidates = sorted(
                         move_candidates,
-                        key=lambda x: (x["학생충돌수"], x["목적함수변화"], x["하루4개증가"], x["하루3개증가"], x["강의실"]),
+                        key=lambda x: _candidate_sort_key(x, sel_row),
                     )
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
@@ -2892,6 +2959,13 @@ elif menu == "이동 시뮬레이터":
                     progress_box.info(st.session_state["move_search_notice"])
 
             stored_candidates = st.session_state.get("move_candidates", [])
+            if stored_candidates:
+                stored_candidates = [
+                    c for c in stored_candidates
+                    if not _is_same_assignment(c, sel_row)
+                ]
+                stored_candidates = sorted(stored_candidates, key=lambda x: _candidate_sort_key(x, sel_row))
+                st.session_state["move_candidates"] = stored_candidates
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
             st.caption(f"가능 후보 수: {len(stored_candidates)}")
             if not stored_candidates:
