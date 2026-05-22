@@ -3071,7 +3071,6 @@ elif menu == "이동 시뮬레이터":
         if current_pick_label in pre_label_to_idx:
             st.session_state.sim_selected_idx = int(pre_label_to_idx[current_pick_label])
             selected_exam_idx_for_calendar = int(pre_label_to_idx[current_pick_label])
-    student_sets = build_exam_student_sets(exam_df_view, df_is)
     sel_idx: int | None = None
     sim_day_no: int | None = None
     sim_start_slot: int | None = None
@@ -3233,33 +3232,19 @@ elif menu == "이동 시뮬레이터":
                 1,
                 int(float(sel_row.get("표시종료슬롯", sel_row["종료슬롯"])) - float(sel_row["시작슬롯"]) + 0.999999),
             )
-            enrollment = len(student_sets.get(int(sel_idx), set()))
+            enrollment = int(sel_row.get("수강인원", 0))
             need_room = max(1, len(normalize_room_choice(sel_row["강의실목록"])))
-            allowed_weeks = [int(display_week_num)]
-            if "fixed_week" in sel_row and pd.notna(sel_row.get("fixed_week")):
-                allowed_weeks = [int(sel_row["fixed_week"])]
-            elif "주차" in sel_row:
-                allowed_weeks = [int(sel_row["주차"])]
+            # 후보 탐색은 현재 화면에 반영된 배정 주차만 빠르게 확인한다.
+            allowed_weeks = [int(sel_row["주차"])]
 
             current_rooms = normalize_room_choice(sel_row["강의실목록"])
-            room_seed: list[int] = []
-            for room in current_rooms:
-                if int(room) not in ROOM_ORDER:
-                    continue
-                room_idx = ROOM_ORDER.index(int(room))
-                for near_idx in range(max(0, room_idx - 2), min(len(ROOM_ORDER), room_idx + 3)):
-                    room_seed.append(int(ROOM_ORDER[near_idx]))
-            if not room_seed:
-                room_seed = [int(r) for r in current_rooms] or ROOM_ORDER[:]
-            room_seed = list(dict.fromkeys(room_seed))
-
             room_combo_candidates = []
-            for combo in combinations(room_seed, need_room):
+            for combo in combinations([int(r) for r in ROOM_ORDER], need_room):
                 total_cap = sum(ROOM_CAP[int(r)] for r in combo)
                 if total_cap >= enrollment:
                     room_combo_candidates.append(tuple(int(r) for r in combo))
             if not room_combo_candidates:
-                room_combo_candidates = [tuple(int(r) for r in normalize_room_choice(sel_row["강의실목록"]))]
+                room_combo_candidates = [tuple(int(r) for r in current_rooms)]
 
             orig_start_slot = int(sel_row["시작슬롯"])
             start_slots_to_search = [
@@ -3281,16 +3266,13 @@ elif menu == "이동 시뮬레이터":
             }
             scorer = score_move_impact
             st.markdown("<div class='sim-step-title'>4. 후보 탐색</div>", unsafe_allow_html=True)
-            st.markdown("<div class='sim-action-note'>탐색 속도를 위해 현재 주차, 현재 시작시간 주변, 현재 강의실 주변을 우선 확인합니다.</div>", unsafe_allow_html=True)
+            st.markdown("<div class='sim-action-note'>탐색 속도를 위해 현재 주차, 현재 시작시간 주변을 우선 확인합니다.</div>", unsafe_allow_html=True)
             if st.button("후보 탐색", key="search_move_candidates_btn", type="primary"):
                 move_candidates: list[dict] = []
-                total_checks = max(1, len(allowed_weeks) * 5 * len(start_slots_to_search) * len(room_combo_candidates))
-                checked_count = 0
                 progress_box = st.empty()
-                progress_text = st.empty()
-                progress_bar = st.progress(0)
                 try:
                     stop_search = False
+                    student_sets = build_exam_student_sets(exam_df_view, df_is)
                     with st.spinner("후보 탐색 중입니다..."):
                         progress_box.info("후보 탐색 중입니다...")
                         for week in allowed_weeks:
@@ -3299,9 +3281,6 @@ elif menu == "이동 시뮬레이터":
                                     if st_slot + dur_slots > 22:
                                         continue
                                     for room_combo in room_combo_candidates:
-                                        checked_count += 1
-                                        progress_text.caption(f"후보 탐색 중입니다... ({checked_count} / {total_checks})")
-                                        progress_bar.progress(min(checked_count / total_checks, 1.0))
                                         if len(move_candidates) >= 20:
                                             stop_search = True
                                             break
@@ -3402,8 +3381,6 @@ elif menu == "이동 시뮬레이터":
                     )
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
-                progress_text.empty()
-                progress_bar.empty()
                 blocked_counts["표시 후보 수"] = len(move_candidates)
                 blocked_counts["탐색 조기중단"] = 1 if len(move_candidates) >= int(blocked_counts.get("탐색 표시 상한", 20)) else 0
                 st.session_state["move_candidates"] = move_candidates
@@ -3522,16 +3499,6 @@ elif menu == "이동 시뮬레이터":
                 cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
                 chosen_row = cand_choice_df.iloc[0]
                 st.session_state["selected_candidate"] = chosen_row.to_dict()
-                out = scorer(
-                    exam_df=exam_df_view,
-                    target_idx=sel_idx,
-                    new_week=int(chosen_row["week"]),
-                    new_day=int(chosen_row["dnum"]),
-                    new_start=int(chosen_row["slot"]),
-                    new_room=chosen_row["room_combo"],
-                    student_sets=student_sets,
-                    summary=summary,
-                )
                 tday = str(chosen_row["요일"])
                 tstart = str(chosen_row["시작"])
                 sim_day_no = int(chosen_row["dnum"])
