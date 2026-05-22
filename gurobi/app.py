@@ -611,9 +611,25 @@ st.markdown(
       box-shadow:0 4px 14px rgba(15,23,42,.05);
       margin:8px 0;
     }
-    .sim-card.top1 {border:2px solid #16a34a;}
-    .sim-card.top2 {border:2px solid #2563eb;}
-    .sim-card.top3 {border:2px solid #94a3b8;}
+    .sim-card.status {
+      border:1px solid #93c5fd;
+      background:#f8fbff;
+      box-shadow:0 6px 18px rgba(37,99,235,.08);
+    }
+    .sim-card.top1 {border:1.5px solid #93c5fd; background:#f8fbff;}
+    .sim-card.top2 {border:1.5px solid #bfdbfe; background:#ffffff;}
+    .sim-card.top3 {border:1.5px solid #cbd5e1; background:#ffffff;}
+    .sim-step-title {
+      margin:14px 0 6px 0;
+      font-size:17px;
+      font-weight:900;
+      color:#0f172a !important;
+    }
+    .sim-action-note {
+      color:#475569 !important;
+      font-size:12px;
+      margin:0 0 8px 0;
+    }
     .sim-card-title {
       font-size:15px;
       font-weight:900;
@@ -682,9 +698,9 @@ COURSEEN_CANDIDATES = [
 ]
 ROOM_ORDER = [402, 479, 482, 483, 502, 583]
 ROOM_CAP = {402: 23, 479: 55, 482: 52, 483: 69, 502: 45, 583: 32}
-WEIGHT_ROOM_MOVE = 0.1048
-WEIGHT_TIME_MOVE = 0.4331
-WEIGHT_DAILY = 0.4620
+WEIGHT_ROOM_MOVE = 0.129409615675
+WEIGHT_TIME_MOVE = 0.283466518343
+WEIGHT_DAILY = 0.587123865982
 D_MAX = 0
 T_MAX = 4
 REPORT_DIR_CANDIDATES = [
@@ -1018,7 +1034,7 @@ def build_exam_df(payload: dict) -> pd.DataFrame:
                 "시험시간(분)": dur_minutes,
                 "시작": slot_to_time(start_slot),
                 "종료": minute_to_time(9 * 60 + start_slot * 30 + dur_minutes),
-                "강의실": " ".join(str(r) for r in rooms),
+                "강의실": " or ".join(str(r) for r in rooms),
                 "강의실목록": rooms,
                 "x_iwdt": 1,
                 "TimeMove_i": int(tmove.get(str(i), 0)),
@@ -1105,13 +1121,25 @@ def normalize_room_choice(new_room) -> list[int]:
     if isinstance(new_room, (list, tuple, set)):
         return sorted(int(x) for x in new_room)
     text = str(new_room).strip()
+    text = text.replace(" or ", "+").replace("/", "+").replace(",", "+")
     if "+" in text:
         return sorted(int(x.strip()) for x in text.split("+") if str(x).strip())
+    if " " in text:
+        parts = [x.strip() for x in text.split() if x.strip()]
+        if len(parts) > 1:
+            return sorted(int(float(x)) for x in parts)
     return [int(float(text))]
 
 
 def format_room_choice(room_choice) -> str:
-    return "+".join(str(x) for x in normalize_room_choice(room_choice))
+    return " or ".join(str(x) for x in normalize_room_choice(room_choice))
+
+
+def format_student_room_choice(room_choice) -> str:
+    rooms = normalize_room_choice(room_choice)
+    if len(rooms) >= 2:
+        return "추후 본인강의실 공지예정"
+    return format_room_choice(rooms)
 
 
 def apply_manual_moves(df_src: pd.DataFrame, manual_moves: dict) -> pd.DataFrame:
@@ -2840,8 +2868,11 @@ if menu == "개인 조회":
                 df_student = student_exam_df(display_exam_df, df_is, row_idx)
                 df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
                 df_student = fill_missing_grade(df_student, grade_map)
+                df_student_display = df_student.copy()
+                if "강의실목록" in df_student_display.columns:
+                    df_student_display["강의실"] = df_student_display["강의실목록"].apply(format_student_room_choice)
 
-                student_summary_cards(df_student)
+                student_summary_cards(df_student_display)
 
                 week_label = st.radio(
                     "주차 선택",
@@ -2852,10 +2883,10 @@ if menu == "개인 조회":
                 cur_week = int(str(week_label).replace("주차", ""))
                 st.markdown(f"### 현재 페이지: {cur_week}주차")
                 try:
-                    render_calendar_grid(df_student, cur_week)
+                    render_calendar_grid(df_student_display, cur_week)
                 except Exception:
                     st.warning("해당 주차 렌더링 중 문제가 있어 빈 시간표로 표시합니다.")
-                    render_calendar_grid(pd.DataFrame(columns=df_student.columns), cur_week)
+                    render_calendar_grid(pd.DataFrame(columns=df_student_display.columns), cur_week)
 
                 st.markdown("#### 시험 상세 표")
                 show_cols = [
@@ -2863,9 +2894,9 @@ if menu == "개인 조회":
                     "원래시간(내분반)", "원래강의실(내분반)", "시간변경여부", "강의실변경여부",
                 ]
                 for col in show_cols:
-                    if col not in df_student.columns:
-                        df_student[col] = "-"
-                view_df = df_student[show_cols].copy()
+                    if col not in df_student_display.columns:
+                        df_student_display[col] = "-"
+                view_df = df_student_display[show_cols].copy()
                 st.markdown(
                     dataframe_to_html_table(
                         view_df,
@@ -2875,7 +2906,7 @@ if menu == "개인 조회":
                 )
 
                 # 개인 시간표 저장
-                png_bytes = make_student_calendar_png(df_student, sid)
+                png_bytes = make_student_calendar_png(df_student_display, sid)
                 if png_bytes is not None:
                     st.download_button(
                         "캘린더 이미지 저장(PNG, 전체 주차)",
@@ -2885,20 +2916,20 @@ if menu == "개인 조회":
                     )
                 st.download_button(
                     "시간표 CSV 저장",
-                    data=df_student[show_cols].to_csv(index=False).encode("utf-8-sig"),
+                    data=df_student_display[show_cols].to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"student_{sid}_timetable.csv",
                     mime="text/csv",
                 )
                 st.download_button(
                     "캘린더(.ics) 저장",
-                    data=make_student_calendar_ics(df_student, sid),
+                    data=make_student_calendar_ics(df_student_display, sid),
                     file_name=f"student_{sid}_exam_calendar.ics",
                     mime="text/calendar",
                 )
                 st.caption("iPhone에서는 ICS 미리보기 대신 아래 Google Calendar 링크로 바로 추가할 수도 있습니다.")
 
                 st.markdown("#### Google Calendar 바로 추가")
-                for _, row in df_student.sort_values(["start_dt", "과목명"]).iterrows():
+                for _, row in df_student_display.sort_values(["start_dt", "과목명"]).iterrows():
                     gc_url = make_google_calendar_url(row, sid)
                     left_gc, right_gc = st.columns([4, 1.3])
                     with left_gc:
@@ -2981,7 +3012,7 @@ if menu == "개인 조회":
                     )
 elif menu == "이동 시뮬레이터":
     st.subheader("이동 시뮬레이터")
-    st.info("특정 시험의 시간 또는 강의실 이동이 필요한 경우, 가능한 대체 배정을 탐색하고 이동에 따른 학생 부담 변화를 확인할 수 있는 시뮬레이터입니다. 이 기능은 재최적화를 다시 수행하지 않고 기존 최적화 결과를 기반으로 영향만 분석합니다.")
+    st.info("이동 시뮬레이터는 최적화된 시험시간표에서 특정 시험을 선택한 뒤, 학생 충돌·강의실 중복·수용인원 조건을 만족하는 이동 후보를 탐색하고 변경 사항을 반영하는 기능입니다.")
     exam_df_view = display_exam_df.copy()
     exam_df_view["학년정규화"] = normalize_grade_series(exam_df_view.get("학년", pd.Series(["-"] * len(exam_df_view))))
 
@@ -2998,53 +3029,24 @@ elif menu == "이동 시뮬레이터":
         if qp_pick is not None:
             st.session_state.sim_selected_idx = qp_pick
 
-    f1, f2, f3 = st.columns([1, 1, 2])
-    with f1:
-        sim_week_view = st.selectbox("주차", ["7주차", "8주차", "9주차"], key="sim_week_view")
-    with f2:
-        viz_grade = st.selectbox("학년", ["전체", "1학년", "2학년", "3학년", "4학년"], key="overall_viz_grade")
-    with f3:
-        grade_filter_value = normalize_grade_value(viz_grade)
-        course_src = exam_df_view.copy()
-        if viz_grade != "전체":
-            course_src = course_src[course_src["학년정규화"] == grade_filter_value]
-        sim_course = st.selectbox(
-            "과목 검색",
-            ["전체"] + sorted(course_src["과목명"].astype(str).dropna().unique().tolist()),
-            key="sim_course_search",
-        )
+    sim_week_view = st.radio("주차 선택", ["7주차", "8주차", "9주차"], horizontal=True, key="sim_week_view")
 
     sim_week_num = int(str(sim_week_view).replace("주차", ""))
-    target_grade = normalize_grade_value(viz_grade)
-    selected_course_name = str(sim_course or "전체")
+    target_grade = "전체"
+    selected_course_name = "전체"
 
     calendar_src = exam_df_view.copy()
-    if viz_grade != "전체":
-        calendar_src = calendar_src[calendar_src["학년정규화"] == target_grade]
-    if selected_course_name != "전체":
-        calendar_src = calendar_src[calendar_src["과목명"].astype(str) == selected_course_name]
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
     selected_course_row = None
     if st.session_state.get("sim_selected_idx") is not None:
         selected_pool = exam_df_view[exam_df_view["시험인덱스"] == int(st.session_state["sim_selected_idx"])]
         if not selected_pool.empty:
-            candidate_row = selected_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
-            grade_ok = viz_grade == "전체" or normalize_grade_value(candidate_row.get("학년", "-")) == target_grade
-            course_ok = selected_course_name == "전체" or str(candidate_row.get("과목명", "")) == selected_course_name
-            if grade_ok and course_ok:
-                selected_course_row = candidate_row
-    if selected_course_row is None and selected_course_name != "전체":
-        selected_course_pool = exam_df_view.copy()
-        if viz_grade != "전체":
-            selected_course_pool = selected_course_pool[selected_course_pool["학년정규화"] == target_grade]
-        selected_course_pool = selected_course_pool[selected_course_pool["과목명"].astype(str) == selected_course_name]
-        if not selected_course_pool.empty:
-            selected_course_row = selected_course_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
+            selected_course_row = selected_pool.sort_values(["주차", "요일번호", "시작슬롯"]).iloc[0]
 
-    display_week_num = int(selected_course_row["주차"]) if selected_course_row is not None else sim_week_num
+    display_week_num = sim_week_num
 
-    current_filter_sig = f"{sim_week_num}|{viz_grade}|{selected_course_name}|{st.session_state.get('sim_selected_idx')}"
+    current_filter_sig = f"{sim_week_num}|{st.session_state.get('sim_selected_idx')}"
     if st.session_state.get("sim_filter_sig") != current_filter_sig:
         st.session_state.sim_filter_sig = current_filter_sig
         st.session_state["move_candidates"] = []
@@ -3052,24 +3054,23 @@ elif menu == "이동 시뮬레이터":
         st.session_state["selected_candidate"] = None
         st.session_state["move_candidate_meta"] = None
 
-    selected_exam_idx_for_calendar = st.session_state.get("sim_selected_idx")
-    if selected_exam_idx_for_calendar is None and selected_course_row is not None:
+    selected_exam_idx_for_calendar = None
+    if selected_course_row is not None:
         selected_exam_idx_for_calendar = int(selected_course_row["시험인덱스"])
-        st.session_state.sim_selected_idx = selected_exam_idx_for_calendar
 
-    st.markdown("##### 필터된 전체 캘린더")
-    calendar_week_src = calendar_src[calendar_src["주차"] == display_week_num].copy()
-    st.markdown(
-        build_overall_calendar_html(calendar_week_src, display_week_num, selected_exam_idx_for_calendar, clickable=True),
-        unsafe_allow_html=True,
-    )
-
-    selectable_week = exam_df_view[exam_df_view["주차"] == display_week_num].copy()
-    if viz_grade != "전체":
-        selectable_week = selectable_week[selectable_week["학년정규화"] == target_grade]
-    if selected_course_name != "전체":
-        selectable_week = selectable_week[selectable_week["과목명"].astype(str) == selected_course_name]
-    selectable_week = selectable_week.sort_values(["요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    selectable_all = exam_df_view.copy()
+    selectable_all["_week_priority"] = selectable_all["주차"].astype(int).apply(lambda x: 0 if x == int(sim_week_num) else 1)
+    selectable_all = selectable_all.sort_values(["_week_priority", "주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
+    pick_options = []
+    if not selectable_all.empty:
+        for _, r in selectable_all.iterrows():
+            label = f"{r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}"
+            pick_options.append((label, int(r["시험인덱스"])))
+        pre_label_to_idx = {label: idx for label, idx in pick_options}
+        current_pick_label = st.session_state.get("sim_pick_exam")
+        if current_pick_label in pre_label_to_idx:
+            st.session_state.sim_selected_idx = int(pre_label_to_idx[current_pick_label])
+            selected_exam_idx_for_calendar = int(pre_label_to_idx[current_pick_label])
     student_sets = build_exam_student_sets(exam_df_view, df_is)
     sel_idx: int | None = None
     sim_day_no: int | None = None
@@ -3167,7 +3168,6 @@ elif menu == "이동 시뮬레이터":
         return "목적함수 변화 없음 (Δ +0.0000)"
 
     with st.container():
-        st.markdown("#### 이동 설정")
         st.caption(f"현재 적용된 수동 변경: {len(st.session_state.manual_moves)}건")
         if st.session_state.get("move_apply_notice"):
             st.success(st.session_state["move_apply_notice"])
@@ -3175,42 +3175,48 @@ elif menu == "이동 시뮬레이터":
         if st.session_state.get("move_search_notice"):
             st.info(st.session_state["move_search_notice"])
             st.session_state["move_search_notice"] = ""
-        st.markdown(
-            "<div class='sim-note'>추천 기준: 목적함수 변화량 최소 → 하루 시험 수 변화 최소 → 시간 변경 최소 → 강의실 변경 최소</div>",
-            unsafe_allow_html=True,
-        )
-        if selectable_week.empty:
-            st.info("현재 필터에서 이동 가능한 선택 과목이 없습니다. 학년이나 검색어를 조정해 주세요.")
+
+        calendar_slot = st.empty()
+
+        if not pick_options:
+            calendar_week_src = calendar_src[calendar_src["주차"] == display_week_num].copy()
+            calendar_slot.markdown(
+                build_overall_calendar_html(calendar_week_src, display_week_num, selected_exam_idx_for_calendar, clickable=True),
+                unsafe_allow_html=True,
+            )
+            st.info("이동 가능한 시험이 없습니다.")
         else:
-            pick_labels = selectable_week.apply(
-                lambda r: f"[{int(r['시험인덱스'])}] {r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | 강의실 {r['강의실']}",
-                axis=1,
-            ).tolist()
+            pick_labels = [x[0] for x in pick_options]
+            label_to_idx = {label: idx for label, idx in pick_options}
             selected_from_click = st.session_state.get("sim_selected_idx", None)
             default_pick_idx = 0
             if selected_from_click is not None:
-                for i, lab in enumerate(pick_labels):
-                    if lab.startswith(f"[{int(selected_from_click)}]"):
+                for i, (_, idx) in enumerate(pick_options):
+                    if int(idx) == int(selected_from_click):
                         default_pick_idx = i
                         break
             pick_label = st.selectbox("이동할 과목 선택", pick_labels, index=default_pick_idx, key="sim_pick_exam")
-            sel_idx = int(pick_label.split("]")[0].replace("[", ""))
+            sel_idx = int(label_to_idx[pick_label])
             if st.session_state.get("sim_selected_idx") != sel_idx:
                 st.session_state["move_candidates"] = []
                 st.session_state["move_candidate_reasons"] = {}
                 st.session_state["selected_candidate"] = None
                 st.session_state["move_candidate_meta"] = None
             st.session_state.sim_selected_idx = sel_idx
-            sel_row = selectable_week[selectable_week["시험인덱스"] == sel_idx].iloc[0]
-            st.markdown(
-                "<div class='sim-card'>"
-                "<div class='sim-card-title'>현재 선택 시험</div>"
-                f"<div class='sim-card-line'><strong>{html.escape(str(sel_row['과목명']))}</strong></div>"
-                f"<div class='sim-card-line'>{html.escape(str(sel_row['요일']))} {html.escape(str(sel_row['시작']))}~{html.escape(str(sel_row['종료']))}</div>"
-                f"<div class='sim-card-line'>강의실 {html.escape(str(sel_row['강의실']))}</div>"
-                "</div>",
+            sel_row = exam_df_view[exam_df_view["시험인덱스"] == sel_idx].iloc[0]
+            display_week_num = int(sel_row["주차"])
+            selected_exam_idx_for_calendar = int(sel_idx)
+            calendar_week_src = calendar_src[calendar_src["주차"] == display_week_num].copy()
+            calendar_slot.markdown(
+                build_overall_calendar_html(calendar_week_src, display_week_num, selected_exam_idx_for_calendar, clickable=True),
                 unsafe_allow_html=True,
             )
+            st.caption(
+                f"선택 시험: {sel_row['과목명']} | "
+                f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} | "
+                f"{sel_row['강의실']}"
+            )
+            st.caption("이동할 과목을 선택한 뒤 후보 탐색을 눌러주세요.")
 
             current_candidate_context = {
                 "sel_idx": int(sel_idx),
@@ -3269,10 +3275,14 @@ elif menu == "이동 시뮬레이터":
                 "강의실 중복": 0,
                 "학생 동시시험": 0,
                 "분반 연속배정 불가": 0,
-                "최종 가능 후보": 0,
+                "표시 후보 수": 0,
+                "탐색 표시 상한": 20,
+                "탐색 조기중단": 0,
             }
             scorer = score_move_impact
-            if st.button("후보 탐색", key="search_move_candidates_btn"):
+            st.markdown("<div class='sim-step-title'>4. 후보 탐색</div>", unsafe_allow_html=True)
+            st.markdown("<div class='sim-action-note'>탐색 속도를 위해 현재 주차, 현재 시작시간 주변, 현재 강의실 주변을 우선 확인합니다.</div>", unsafe_allow_html=True)
+            if st.button("후보 탐색", key="search_move_candidates_btn", type="primary"):
                 move_candidates: list[dict] = []
                 total_checks = max(1, len(allowed_weeks) * 5 * len(start_slots_to_search) * len(room_combo_candidates))
                 checked_count = 0
@@ -3394,12 +3404,16 @@ elif menu == "이동 시뮬레이터":
                     st.error(f"후보 계산 중 오류: {_calc_err}")
                 progress_text.empty()
                 progress_bar.empty()
-                blocked_counts["최종 가능 후보"] = len(move_candidates)
+                blocked_counts["표시 후보 수"] = len(move_candidates)
+                blocked_counts["탐색 조기중단"] = 1 if len(move_candidates) >= int(blocked_counts.get("탐색 표시 상한", 20)) else 0
                 st.session_state["move_candidates"] = move_candidates
                 st.session_state["move_candidate_reasons"] = blocked_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
                 if move_candidates:
-                    st.session_state["move_search_notice"] = f"가능 후보 {len(move_candidates)}개를 찾았습니다."
+                    if len(move_candidates) >= 20:
+                        st.session_state["move_search_notice"] = "탐색 속도를 위해 상위 20개 후보만 표시합니다."
+                    else:
+                        st.session_state["move_search_notice"] = f"표시 후보 {len(move_candidates)}개를 찾았습니다."
                     progress_box.success(st.session_state["move_search_notice"])
                 else:
                     st.session_state["move_search_notice"] = "현재 조건에서 가능한 이동 후보가 없습니다."
@@ -3414,31 +3428,97 @@ elif menu == "이동 시뮬레이터":
                 stored_candidates = sorted(stored_candidates, key=lambda x: _candidate_sort_key(x, sel_row))
                 st.session_state["move_candidates"] = stored_candidates
             stored_reasons = st.session_state.get("move_candidate_reasons", {})
-            st.caption(f"가능 후보 수: {len(stored_candidates)}")
+            if stored_candidates:
+                if len(stored_candidates) >= int(stored_reasons.get("탐색 표시 상한", 20)):
+                    st.caption(f"탐색 속도를 위해 상위 {len(stored_candidates)}개 후보만 표시합니다.")
+                else:
+                    st.caption(f"표시 후보 {len(stored_candidates)}개")
             if not stored_candidates:
                 if stored_reasons:
                     st.info("현재 조건에서 가능한 이동 후보가 없습니다.")
                     for label, count in stored_reasons.items():
+                        if label in ["표시 후보 수", "탐색 표시 상한", "탐색 조기중단"]:
+                            continue
                         st.write(f"- {label}: {int(count)}개")
                 else:
                     st.info("과목을 선택한 뒤 후보 탐색 버튼을 눌러 이동 가능한 시험 후보를 확인하세요.")
             else:
+                st.markdown("<div class='sim-step-title'>5. 후보 리스트</div>", unsafe_allow_html=True)
                 st.markdown(
                     "<div class='sim-note'>아래 후보는 학생 동시시험, 강의실 중복, 수용인원 조건을 만족한 후보입니다.</div>",
                     unsafe_allow_html=True,
                 )
                 cand_df = pd.DataFrame(stored_candidates)
-                time_opts = (
-                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
-                    .drop_duplicates()
-                    .tolist()
+                cand_df["시간후보"] = cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
+                time_summary = (
+                    cand_df.groupby("시간후보", sort=False)
+                    .agg(
+                        요일=("요일", "first"),
+                        시작=("시작", "first"),
+                        종료=("종료", "first"),
+                        목적함수변화=("목적함수변화", "min"),
+                        영향학생수=("영향학생수", "min"),
+                        하루시험수변화=("daily_exam_increase", "min"),
+                        가능강의실수=("강의실", "nunique"),
+                    )
+                    .reset_index()
                 )
-                tsel = st.selectbox("가능한 시간", time_opts, key="sim_time_filter")
+                time_summary = time_summary.sort_values(
+                    ["목적함수변화", "하루시험수변화", "영향학생수", "요일", "시작"]
+                ).reset_index(drop=True)
+                st.markdown("##### STEP 2. 이동 가능한 시간 후보 선택")
+                st.dataframe(
+                    time_summary[["시간후보", "목적함수변화", "영향학생수", "하루시험수변화", "가능강의실수"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "시간후보": "이동 가능 시간",
+                        "목적함수변화": st.column_config.NumberColumn("목적함수 변화", format="%+.4f"),
+                        "영향학생수": "영향 학생",
+                        "하루시험수변화": "하루 시험 수 변화",
+                        "가능강의실수": "가능 강의실",
+                    },
+                )
+                time_label_map = {
+                    row["시간후보"]: (
+                        f"{row['시간후보']} | Δ {float(row['목적함수변화']):+.4f} | "
+                        f"영향학생 {int(row['영향학생수'])}명 | 가능 강의실 {int(row['가능강의실수'])}개"
+                    )
+                    for _, row in time_summary.iterrows()
+                }
+                time_opts = list(time_label_map.values())
+                reverse_time_label_map = {v: k for k, v in time_label_map.items()}
+                tsel_label = st.selectbox("STEP 2 시간 후보", time_opts, key="sim_time_filter")
+                tsel = reverse_time_label_map[tsel_label]
                 cand_time_df = cand_df[
-                    cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}" == tsel, axis=1)
+                    cand_df["시간후보"] == tsel
                 ].copy()
-                room_opts = cand_time_df["강의실"].astype(str).drop_duplicates().tolist()
-                rsel = st.selectbox("가능한 강의실", room_opts, key="sim_room_filter_by_time")
+                st.markdown("##### STEP 3. 선택 시간에서 가능한 강의실 선택")
+                room_summary = cand_time_df[["강의실", "목적함수변화", "영향학생수", "daily_exam_increase", "경고"]].copy()
+                room_summary = room_summary.sort_values(["목적함수변화", "daily_exam_increase", "영향학생수", "강의실"]).reset_index(drop=True)
+                st.dataframe(
+                    room_summary.rename(columns={"daily_exam_increase": "하루시험수변화"}),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "강의실": "가능 강의실",
+                        "목적함수변화": st.column_config.NumberColumn("목적함수 변화", format="%+.4f"),
+                        "영향학생수": "영향 학생",
+                        "하루시험수변화": "하루 시험 수 변화",
+                        "경고": "경고",
+                    },
+                )
+                room_label_map = {
+                    str(row["강의실"]): (
+                        f"{row['강의실']} | Δ {float(row['목적함수변화']):+.4f} | "
+                        f"영향학생 {int(row['영향학생수'])}명"
+                    )
+                    for _, row in room_summary.iterrows()
+                }
+                room_opts = list(room_label_map.values())
+                reverse_room_label_map = {v: k for k, v in room_label_map.items()}
+                rsel_label = st.selectbox("STEP 3 강의실 후보", room_opts, key="sim_room_filter_by_time")
+                rsel = reverse_room_label_map[rsel_label]
                 cand_choice_df = cand_time_df[cand_time_df["강의실"].astype(str) == str(rsel)].copy()
                 chosen_row = cand_choice_df.iloc[0]
                 st.session_state["selected_candidate"] = chosen_row.to_dict()
@@ -3475,7 +3555,7 @@ elif menu == "이동 시뮬레이터":
                 if chosen_meta["objective_increase"]:
                     chosen_badges.append(_badge_html("⚠ 목적함수 증가", "risk"))
 
-                st.markdown("#### 선택 후보 요약")
+                st.markdown("<div class='sim-step-title'>STEP 4. 선택 후보 요약</div>", unsafe_allow_html=True)
                 st.markdown(
                     "<div class='sim-card'>"
                     "<div class='sim-card-title'>선택한 이동안</div>"
@@ -3484,75 +3564,21 @@ elif menu == "이동 시뮬레이터":
                     f"<div class='sim-card-line'>강제제약 통과 여부: 통과</div>"
                     f"<div class='sim-card-line'>{html.escape(_objective_status_text(chosen_meta['objective_delta']))}</div>"
                     f"<div class='sim-card-line'>하루 시험 수 변화: {chosen_meta['daily_exam_increase']:+d}</div>"
-                    f"<div class='sim-card-line'>시간 변경 여부: {'예' if chosen_meta['time_changed'] else '아니오'}</div>"
-                    f"<div class='sim-card-line'>강의실 변경 여부: {'예' if chosen_meta['room_changed'] else '아니오'}</div>"
+                    f"<div class='sim-card-line'>시간 변경 여부(TC): {'예' if chosen_meta['time_changed'] else '아니오'}</div>"
+                    f"<div class='sim-card-line'>강의실 변경 여부(RC): {'예' if chosen_meta['room_changed'] else '아니오'}</div>"
                     f"<div class='sim-badges'>{''.join(chosen_badges)}</div>"
                     "</div>",
                     unsafe_allow_html=True,
                 )
 
-                st.markdown("#### 추천 후보 TOP3")
-                top3 = cand_df.head(3)
-                for rank, (_, rr) in enumerate(top3.iterrows(), start=1):
-                    rr_meta = _candidate_meta(rr, sel_row)
-                    badge_parts = [
-                        _badge_html("✅ 학생충돌 없음", "ok"),
-                        _badge_html("✅ 강의실중복 없음", "ok"),
-                    ]
-                    if rr_meta["dmax_violation"]:
-                        badge_parts.append(_badge_html("⚠ 하루 시험 수 기준 초과", "warn"))
-                    if rr_meta["tmax_violation"]:
-                        badge_parts.append(_badge_html("⚠ 연속 시험 시간 기준 초과", "warn"))
-                    if rr_meta["daily_exam_increase"] > 0:
-                        badge_parts.append(_badge_html("⚠ 하루 시험 수 증가", "warn"))
-                    if rr_meta["time_changed"]:
-                        badge_parts.append(_badge_html("⚠ 시간 변경 발생", "warn"))
-                    if rr_meta["room_changed"]:
-                        badge_parts.append(_badge_html("⚠ 강의실 변경 발생", "warn"))
-                    if rr_meta["objective_increase"]:
-                        badge_parts.append(_badge_html("⚠ 목적함수 증가", "risk"))
-                    card_cls = "top1" if rank == 1 else "top2" if rank == 2 else "top3"
-                    st.markdown(
-                        f"<div class='sim-card {card_cls}'>"
-                        f"<div class='sim-card-title'>추천 {rank}위</div>"
-                        f"<div class='sim-card-line'>이동 시간: {html.escape(str(rr['요일']))} {html.escape(str(rr['시작']))}~{html.escape(str(rr['종료']))}</div>"
-                        f"<div class='sim-card-line'>강의실: {html.escape(str(rr['강의실']))}</div>"
-                        f"<div class='sim-card-line'>{html.escape(_objective_status_text(rr_meta['objective_delta']))}</div>"
-                        f"<div class='sim-card-line'>하루 시험 수 변화: {rr_meta['daily_exam_increase']:+d}</div>"
-                        f"<div class='sim-card-line'>시간 변경 여부: {'예' if rr_meta['time_changed'] else '아니오'}</div>"
-                        f"<div class='sim-card-line'>강의실 변경 여부: {'예' if rr_meta['room_changed'] else '아니오'}</div>"
-                        f"<div class='sim-card-line'>추천 이유: {html.escape(_candidate_reason_text(rr_meta))}</div>"
-                        f"<div class='sim-badges'>{''.join(badge_parts)}</div>"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-
-        if st.session_state.manual_moves:
-            rows = []
-            for k, mv in st.session_state.manual_moves.items():
-                rows.append(
-                    {
-                        "시험인덱스": int(k),
-                        "주차": int(mv["week"]),
-                        "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
-                        "시작": slot_to_time(int(mv["start_slot"])),
-                        "강의실": format_room_choice(mv["room"]),
-                    }
-                )
-            sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
-            st.dataframe(sim_df, use_container_width=True, hide_index=True)
-            st.download_button(
-                "시뮬레이션 결과 CSV 다운로드",
-                data=sim_df.to_csv(index=False).encode("utf-8-sig"),
-                file_name="simulation_moves.csv",
-                mime="text/csv",
-            )
-
+    st.markdown("<div class='sim-step-title'>STEP 5. 변경 실행</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sim-action-note'>선택 후보를 검토한 뒤 변경을 반영하거나, 마지막 변경을 되돌리거나, 전체 수동 변경을 초기화합니다.</div>", unsafe_allow_html=True)
     button_row = st.columns(3)
     with button_row[0]:
         if st.button(
             "변경 완료",
             key="apply_move_btn",
+            type="primary",
             disabled=sel_idx is None or sim_day_no is None or sim_start_slot is None or sim_room_choice is None or st.session_state.get("selected_candidate") is None,
         ):
             selected_candidate = st.session_state.get("selected_candidate") or {}
@@ -3596,6 +3622,27 @@ elif menu == "이동 시뮬레이터":
             st.session_state["move_candidate_meta"] = None
             st.session_state["move_apply_notice"] = "초기화되었습니다."
             st.rerun()
+
+    if st.session_state.manual_moves:
+        rows = []
+        for k, mv in st.session_state.manual_moves.items():
+            rows.append(
+                {
+                    "시험인덱스": int(k),
+                    "주차": int(mv["week"]),
+                    "요일": DAY_LABELS.get(int(mv["day"]), str(mv["day"])),
+                    "시작": slot_to_time(int(mv["start_slot"])),
+                    "강의실": format_room_choice(mv["room"]),
+                }
+            )
+        sim_df = pd.DataFrame(rows).sort_values(["주차", "요일", "시작"])
+        st.dataframe(sim_df, use_container_width=True, hide_index=True)
+        st.download_button(
+            "시뮬레이션 결과 CSV 다운로드",
+            data=sim_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="simulation_moves.csv",
+            mime="text/csv",
+        )
 elif menu == "변경사항 확인":
     st.subheader("기존 대비 변경사항 확인")
 

@@ -10,9 +10,6 @@ import re
 import time
 import os
 import json
-import subprocess
-import sys
-import webbrowser
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
@@ -29,14 +26,18 @@ BASE_DIR = Path(__file__).resolve().parent
 IS_PATH = BASE_DIR / "IS.xlsx"
 OT_PRIMARY_PATH = BASE_DIR / "OT_all_sessions.xlsx"
 OT_LOCAL_PATH = BASE_DIR / "OT_all_sessions (1).xlsx"
-OT_FALLBACK_PATH = Path(r"C:\Users\taese\Documents\카카오톡 받은 파일\OT_all_sessions (1).xlsx")
+WEEKLY_EXAM_PATH = BASE_DIR / "weekly_exam.xlsx"
+ROOM_CAP_PATH = BASE_DIR / "room_cap.xlsx"
 
-ROOM_ORDER = [402, 479, 482, 483, 502, 583]
-ROOM_CAP = {402: 23, 479: 55, 482: 52, 483: 69, 502: 45, 583: 32}
+# 강의실 수용인원과 과목별 시험 주차는 수기로 코드에 쓰지 않는다.
+# 같은 폴더의 room_cap.xlsx(room_no, capacity),
+# weekly_exam.xlsx(course_name, fixed_week)를 읽어 모델 입력으로 사용한다.
+ROOM_ORDER: list[int] = []
+ROOM_CAP: dict[int, int] = {}
 
-WEIGHT_ROOM_MOVE = 0.231902554
-WEIGHT_TIME_MOVE = 0.329257956
-WEIGHT_DAILY = 0.43883949
+WEIGHT_ROOM_MOVE = 0.129409615675
+WEIGHT_TIME_MOVE = 0.283466518343
+WEIGHT_DAILY = 0.587123865982
 
 TARGET_WEEK = 8
 USE_WEEK_LIMIT = 1
@@ -70,10 +71,6 @@ def env_int(name: str, default: int) -> int:
 # 결정변수가 아니라 파라미터이다.
 D_MAX = 0
 T_MAX = 4
-# matplotlib 결과 창 표시 제어
-SHOW_PLOTS = env_int("SHOW_PLOTS", 1)
-OPEN_STREAMLIT = env_int("OPEN_STREAMLIT", 1)
-STREAMLIT_PORT = env_int("STREAMLIT_PORT", 8502)
 TIME_LIMIT_SEC = env_int("TIME_LIMIT_SEC", 0)
 MIP_FOCUS = env_int("MIP_FOCUS", 0)
 
@@ -260,183 +257,6 @@ def extract_student_id(row: dict[str, str], fallback_idx: int) -> str:
     return f"학생_{fallback_idx + 1}"
 
 
-def show_result_plots(
-    inst: dict,
-    assignment: dict[int, dict[str, int | list[int]]],
-    objective: float,
-    room_move: float,
-    time_move: float,
-    daily_penalty: float,
-    verify_rows: list[list[str]],
-    decision_rows: list[list[str]],
-) -> None:
-    """
-    구로비 실행 결과를 matplotlib 창으로 바로 띄운다.
-    영상 촬영용 출력이므로 report.html/png/pdf 리포트 파일은 저장하지 않는다.
-    """
-    try:
-        import matplotlib.pyplot as plt
-        from matplotlib.patches import Rectangle
-    except Exception:
-        print("시각화 생략: matplotlib 환경 오류(NumPy/Matplotlib 버전 충돌)")
-        return
-
-    # 한글 폰트 설정(현재 환경에 있는 폰트만 적용)
-    try:
-        from matplotlib import font_manager
-        installed = {f.name for f in font_manager.fontManager.ttflist}
-        pref = ["Malgun Gothic", "NanumGothic", "맑은 고딕", "DejaVu Sans"]
-        picked = [f for f in pref if f in installed]
-        if not picked:
-            picked = ["DejaVu Sans"]
-        plt.rcParams["font.family"] = picked
-        plt.rcParams["axes.unicode_minus"] = False
-    except Exception:
-        pass
-
-    # 0) 최적화 결과 창: Streamlit의 "최적화 결과" 탭과 같은 순서로 보여준다.
-    fig0, ax0 = plt.subplots(figsize=(15, 8.5))
-    fig0.patch.set_facecolor("#f6f8fb")
-    ax0.set_facecolor("#f6f8fb")
-    ax0.axis("off")
-
-    def draw_card(x: float, y: float, w: float, h: float, title: str, value: str, color: str = "#0f172a") -> None:
-        rect = Rectangle((x, y), w, h, transform=ax0.transAxes, facecolor="white", edgecolor="#d8e0ea", linewidth=1.0)
-        ax0.add_patch(rect)
-        ax0.text(x + 0.018, y + h - 0.034, title, transform=ax0.transAxes, fontsize=10, color="#64748b", va="top")
-        ax0.text(x + 0.018, y + 0.030, value, transform=ax0.transAxes, fontsize=18, fontweight="bold", color=color, va="bottom")
-
-    def style_table(tbl, header_color: str = "#1f2937", body_color: str = "white") -> None:
-        tbl.auto_set_font_size(False)
-        tbl.set_fontsize(8.5)
-        for (row, _col), cell in tbl.get_celld().items():
-            cell.set_edgecolor("#d8e0ea")
-            cell.set_linewidth(0.7)
-            if row == 0:
-                cell.set_facecolor(header_color)
-                cell.get_text().set_color("white")
-                cell.get_text().set_fontweight("bold")
-            else:
-                cell.set_facecolor(body_color)
-                cell.get_text().set_color("#111827")
-
-    calc_objective = WEIGHT_ROOM_MOVE * room_move + WEIGHT_TIME_MOVE * time_move + WEIGHT_DAILY * daily_penalty
-    violation_total = sum(int(v) for _name, v in verify_rows if str(v).strip().lstrip("-").isdigit())
-
-    ax0.text(0.02, 0.965, "INUTimetable | 구로비 최적화 결과", transform=ax0.transAxes, fontsize=20, fontweight="bold", color="#111827", va="top")
-    ax0.text(
-        0.02,
-        0.925,
-        "목적함수 현황과 제약식 위반 여부를 한 화면에서 확인합니다.",
-        transform=ax0.transAxes,
-        fontsize=10.5,
-        color="#475569",
-        va="top",
-    )
-
-    card_y = 0.80
-    card_w = 0.18
-    gap = 0.015
-    draw_card(0.02 + 0 * (card_w + gap), card_y, card_w, 0.10, "목적함수값", f"{objective:.4f}")
-    draw_card(0.02 + 1 * (card_w + gap), card_y, card_w, 0.10, "강의실 변경 합", f"{room_move:.0f}")
-    draw_card(0.02 + 2 * (card_w + gap), card_y, card_w, 0.10, "시간 이동 합", f"{time_move:.0f}")
-    draw_card(0.02 + 3 * (card_w + gap), card_y, card_w, 0.10, "하루 시험수 벌점 합", f"{daily_penalty:.0f}")
-    draw_card(0.02 + 4 * (card_w + gap), card_y, card_w, 0.10, "제약 위반 합", f"{violation_total}", "#166534" if violation_total == 0 else "#b91c1c")
-
-    obj_rows = [
-        ["가중치(강의실변경)", f"{WEIGHT_ROOM_MOVE:.4f}"],
-        ["가중치(시간이동)", f"{WEIGHT_TIME_MOVE:.4f}"],
-        ["가중치(하루시험수)", f"{WEIGHT_DAILY:.4f}"],
-        ["강의실변경합", f"{room_move:.0f}"],
-        ["시간이동합", f"{time_move:.0f}"],
-        ["하루벌점합", f"{daily_penalty:.0f}"],
-        ["계산 목적값", f"{calc_objective:.4f}"],
-        ["모델 목적값", f"{objective:.4f}"],
-    ]
-
-    ax0.text(0.02, 0.735, "목적함수 현황", transform=ax0.transAxes, fontsize=14, fontweight="bold", color="#111827", va="top")
-    tbl_obj = ax0.table(
-        cellText=obj_rows,
-        colLabels=["항목", "값"],
-        colLoc="left",
-        cellLoc="left",
-        bbox=[0.02, 0.205, 0.36, 0.490],
-    )
-    style_table(tbl_obj, header_color="#334155")
-    tbl_obj.set_fontsize(11)
-
-    ax0.text(0.43, 0.735, "제약식 위반사항", transform=ax0.transAxes, fontsize=14, fontweight="bold", color="#111827", va="top")
-    tbl_chk = ax0.table(
-        cellText=verify_rows,
-        colLabels=["제약식", "위반건수"],
-        colLoc="left",
-        cellLoc="left",
-        bbox=[0.43, 0.205, 0.55, 0.490],
-    )
-    style_table(tbl_chk, header_color="#334155")
-    tbl_chk.set_fontsize(10.5)
-    for (row, col), cell in tbl_chk.get_celld().items():
-        if row > 0 and col == 1:
-            val = cell.get_text().get_text().strip()
-            if val.isdigit() and int(val) > 0:
-                cell.set_facecolor("#fee2e2")
-                cell.get_text().set_color("#991b1b")
-                cell.get_text().set_fontweight("bold")
-            elif val.isdigit():
-                cell.set_facecolor("#dcfce7")
-                cell.get_text().set_color("#166534")
-                cell.get_text().set_fontweight("bold")
-
-    ax0.text(
-        0.02,
-        0.075,
-        "결정변수 선택표와 전체 시간표 캘린더는 이 창을 닫은 뒤 자동으로 열리는 Streamlit 웹사이트에서 확인합니다.",
-        transform=ax0.transAxes,
-        fontsize=12,
-        color="#475569",
-        va="bottom",
-    )
-    plt.tight_layout()
-
-    print("matplotlib 최적화 요약 창을 표시합니다. 창을 닫으면 Streamlit 웹사이트가 열립니다.")
-    plt.show()
-
-
-def open_streamlit_site() -> None:
-    """최신 JSON 결과를 읽는 Streamlit 조회 사이트를 실행하고 브라우저를 연다."""
-    app_path = BASE_DIR / "app.py"
-    if not app_path.exists():
-        print(f"Streamlit app.py를 찾지 못했습니다: {app_path}")
-        return
-
-    url = f"http://localhost:{STREAMLIT_PORT}"
-    try:
-        subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "streamlit",
-                "run",
-                str(app_path),
-                "--server.port",
-                str(STREAMLIT_PORT),
-                "--server.headless",
-                "true",
-            ],
-            cwd=str(BASE_DIR),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-    except Exception as exc:
-        print(f"Streamlit 실행 실패: {exc}")
-        return
-
-    time.sleep(2)
-    print(f"Streamlit 웹사이트 열기: {url}")
-    webbrowser.open(url)
-
-
 def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
     ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(path) as zf:
@@ -504,13 +324,62 @@ def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
         return rows
 
 
+def load_room_capacity_from_excel() -> tuple[list[int], dict[int, int]]:
+    """room_cap.xlsx에서 강의실 목록과 수용인원을 읽는다.
+
+    필수 열:
+        room_no  : 강의실 번호
+        capacity : 수용인원
+
+    강의실 용량은 코드에 수기로 쓰지 않고 이 엑셀 파일만 수정한다.
+    """
+    if not ROOM_CAP_PATH.exists():
+        raise FileNotFoundError(f"강의실 수용인원 파일을 찾을 수 없습니다: {ROOM_CAP_PATH}")
+
+    rows = read_xlsx_rows(ROOM_CAP_PATH)
+    cap_map: dict[int, int] = {}
+    for row in rows:
+        room_no = parse_int(row.get("room_no", row.get("강의실", row.get("room", 0))))
+        capacity = parse_int(row.get("capacity", row.get("수용인원", row.get("cap", 0))))
+        if room_no > 0 and capacity > 0:
+            cap_map[int(room_no)] = int(capacity)
+
+    if not cap_map:
+        raise ValueError("room_cap.xlsx에 유효한 room_no/capacity 행이 없습니다.")
+    return list(cap_map.keys()), cap_map
+
+
+def load_fixed_week_from_excel() -> dict[str, int]:
+    """weekly_exam.xlsx에서 과목별 고정 시험 주차를 읽는다.
+
+    필수 열:
+        course_name : 과목명
+        fixed_week  : 시험 주차
+
+    과목명은 normalize_name으로 정규화해 분반 표기 차이가 있어도 모델 내부 과목명과 맞춘다.
+    과목별 시험 주차는 코드에 수기로 쓰지 않고 이 엑셀 파일만 수정한다.
+    """
+    if not WEEKLY_EXAM_PATH.exists():
+        raise FileNotFoundError(f"과목별 시험 주차 파일을 찾을 수 없습니다: {WEEKLY_EXAM_PATH}")
+
+    rows = read_xlsx_rows(WEEKLY_EXAM_PATH)
+    fixed_week: dict[str, int] = {}
+    for row in rows:
+        course = str(row.get("course_name", row.get("과목명", row.get("course", "")))).strip()
+        week = parse_int(row.get("fixed_week", row.get("주차", row.get("week", 0))))
+        if course and week in WEEK_VALUES:
+            fixed_week[normalize_name(course)] = int(week)
+
+    if not fixed_week:
+        raise ValueError("weekly_exam.xlsx에 유효한 course_name/fixed_week 행이 없습니다.")
+    return fixed_week
+
+
 def resolve_ot_path() -> Path:
     if OT_PRIMARY_PATH.exists():
         return OT_PRIMARY_PATH
     if OT_LOCAL_PATH.exists():
         return OT_LOCAL_PATH
-    if OT_FALLBACK_PATH.exists():
-        return OT_FALLBACK_PATH
     raise FileNotFoundError(f"OT_all_sessions file not found: {OT_PRIMARY_PATH}")
 
 
@@ -616,8 +485,18 @@ def active_slot_indices(start_slot_value: int, time_points: list[int], dur_slots
 
 
 def build_instance_18() -> dict:
+    global ROOM_ORDER, ROOM_CAP
+
     if not IS_PATH.exists():
         raise FileNotFoundError(f"IS.xlsx not found: {IS_PATH}")
+
+    # 입력 엑셀 반영:
+    # - room_cap.xlsx: 강의실 번호와 수용인원
+    # - weekly_exam.xlsx: 과목별 고정 시험 주차
+    # 다른 컴퓨터에서도 같은 폴더에 같은 형식의 엑셀만 있으면 그대로 실행된다.
+    ROOM_ORDER, ROOM_CAP = load_room_capacity_from_excel()
+    fixed_week_by_course = load_fixed_week_from_excel()
+    print(f"입력 엑셀 로드: {ROOM_CAP_PATH.name}({len(ROOM_CAP)}개 강의실), {WEEKLY_EXAM_PATH.name}({len(fixed_week_by_course)}개 과목)")
 
     ot_meta = parse_ot_metadata()
     rows = read_xlsx_rows(IS_PATH)
@@ -724,6 +603,7 @@ def build_instance_18() -> dict:
         "n_rooms": len(room_vals),
         "room_no": room_vals,
         "room_cap": [ROOM_CAP[r] for r in room_vals],
+        "fixed_week_by_course": fixed_week_by_course,
         "enroll": enroll,
         "student_ids": student_ids,
         "exams": exams,
@@ -868,37 +748,10 @@ def run_exact_18() -> dict | None:
 
     # ================================================================
     # 추가 제약식: 과목별 시험 주차 고정
-    # 생산통제, 기업과 안전 -> 7주차
-    # 8주차 지정 과목 + 대학수학 -> 8주차
-    # 9주차 지정 과목 -> 9주차
+    # weekly_exam.xlsx의 course_name/fixed_week 열을 읽어 생성한 값이다.
+    # 주차 변경은 코드 수정이 아니라 weekly_exam.xlsx 수정으로 관리한다.
     # ================================================================
-    # 추가 제약식: 과목별 시험 주차 고정
-    # 출력 과목명 기준
-    # ================================================================
-    fixed_week_by_course = {
-        # 7주차
-        "ProdControl": 7,  # 생산통제
-
-        # 8주차
-        "Corp&Safety": 8,  # 기업과 안전
-        "Calculus(1)": 8,  # 대학수학
-        "ReinforcLearn": 8,  # 강화학습
-        "Det.ManageSci": 8,  # 확정적 경영과학
-        "SmartLogistics": 8,  # 스마트 물류
-        "Ergonomics": 8,  # 인간공학
-        "Database": 8,  # 데이터베이스
-        "IntroFinEng": 8,  # 금융공학개론
-        "ProdDevProcess": 8,  # 제품개발프로세스
-        "GenAIApps": 8,  # 생성형 AI 활용
-        "SmartMfg&Auto": 8,  # 스마트 제조 및 자동화
-
-        # 9주차
-        "IntroIE&M": 9,  # 산업경영공학개론
-        "Optim&Apps": 9,  # 최적화모델링응용
-        "Prob&Stats(1)": 9,  # 확률 및 통계
-        "DataMining": 9,  # 데이터마이닝
-        "QualityEng": 9,  # 품질공학
-    }
+    fixed_week_by_course = inst["fixed_week_by_course"]
 
     for i in I:
         course_name = normalize_name(inst["exams"][i]["name"])
@@ -1287,22 +1140,6 @@ def run_exact_18() -> dict | None:
 
     print(f"Streamlit용 결과 갱신: {RESULT_JSON_PATH}")
     print(f"Streamlit용 결과 갱신: {RESULT_JSON_ASCII_PATH}")
-
-    # 영상 촬영용 matplotlib 창 표시
-    if SHOW_PLOTS == 1:
-        show_result_plots(
-            inst=inst,
-            assignment=assignment,
-            objective=m.ObjVal,
-            room_move=total_room_move.getValue(),
-            time_move=total_time_move.getValue(),
-            daily_penalty=total_daily.getValue(),
-            verify_rows=verify_rows,
-            decision_rows=decision_rows,
-        )
-
-    if OPEN_STREAMLIT == 1:
-        open_streamlit_site()
 
     return {
         "inst": inst,
