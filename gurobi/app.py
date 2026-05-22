@@ -3035,7 +3035,10 @@ elif menu == "이동 시뮬레이터":
     target_grade = "전체"
     selected_course_name = "전체"
 
-    calendar_src = exam_df_view.copy()
+    # 캘린더는 항상 수동 변경이 반영된 전체 시간표를 기준으로 표시한다.
+    # 과목 선택값은 필터가 아니라 블록 강조용으로만 사용한다.
+    calendar_src = display_exam_df.copy()
+    calendar_src["학년정규화"] = normalize_grade_series(calendar_src.get("학년", pd.Series(["-"] * len(calendar_src))))
     calendar_src = calendar_src.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
     selected_course_row = None
@@ -3203,7 +3206,6 @@ elif menu == "이동 시뮬레이터":
                 st.session_state["move_candidate_meta"] = None
             st.session_state.sim_selected_idx = sel_idx
             sel_row = exam_df_view[exam_df_view["시험인덱스"] == sel_idx].iloc[0]
-            display_week_num = int(sel_row["주차"])
             selected_exam_idx_for_calendar = int(sel_idx)
             calendar_week_src = calendar_src[calendar_src["주차"] == display_week_num].copy()
             calendar_slot.markdown(
