@@ -530,7 +530,9 @@ st.markdown(
       position:absolute;
       left:0;
       width:100%;
-      transform:translateY(-50%);
+      height:36px;
+      line-height:36px;
+      transform:none;
       text-align:center;
       font-size:9px;
       font-weight:800;
@@ -2562,9 +2564,9 @@ def build_overall_calendar_html(
         return f"<div class='overall-abs-day-col' style='height:{total_height}px;'>{''.join(event_divs)}</div>"
 
     time_labels = []
-    for slot in range(0, slot_count + 1):
+    for slot in range(0, slot_count):
         top_px = slot * slot_height
-        label = slot_to_time(slot) if slot < slot_count else "20:00"
+        label = slot_to_time(slot)
         time_labels.append(
             f"<div class='overall-abs-time-label' style='top:{top_px}px'>{html.escape(label)}</div>"
         )
