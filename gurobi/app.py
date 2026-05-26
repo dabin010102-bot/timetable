@@ -3272,19 +3272,30 @@ elif menu == "이동 시뮬레이터":
             if st.button("후보 탐색", key="search_move_candidates_btn", type="primary"):
                 move_candidates: list[dict] = []
                 progress_box = st.empty()
+                progress_text = st.empty()
+                progress_bar = st.progress(0)
+                total_steps = max(1, len(allowed_weeks) * 5 * len(start_slots_to_search) * len(room_combo_candidates))
+                current_step = 0
                 try:
                     stop_search = False
                     student_sets = build_exam_student_sets(exam_df_view, df_is)
                     with st.spinner("후보 탐색 중입니다..."):
-                        progress_box.info("후보 탐색 중입니다...")
+                        progress_box.info("상위 이동 후보를 탐색 중입니다...")
+                        progress_text.caption("잠시만 기다려주세요. 탐색 범위 내 후보를 확인하고 있습니다.")
                         for week in allowed_weeks:
                             for dnum in [1, 2, 3, 4, 5]:
                                 for st_slot in start_slots_to_search:
                                     if st_slot + dur_slots > 22:
                                         continue
                                     for room_combo in room_combo_candidates:
+                                        current_step += 1
+                                        progress = min(current_step / total_steps, 1.0)
+                                        progress_text.caption(f"탐색 범위 내 후보 확인 중... {current_step} / {total_steps}")
+                                        progress_bar.progress(progress)
                                         if len(move_candidates) >= 20:
                                             stop_search = True
+                                            progress_bar.progress(1.0)
+                                            progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
                                             break
                                         out_eval = scorer(
                                             exam_df=exam_df_view,
@@ -3377,6 +3388,7 @@ elif menu == "이동 시뮬레이터":
                                     break
                             if stop_search:
                                 break
+                    progress_bar.progress(1.0)
                     move_candidates = sorted(
                         move_candidates,
                         key=lambda x: _candidate_sort_key(x, sel_row),
@@ -3392,10 +3404,12 @@ elif menu == "이동 시뮬레이터":
                     if len(move_candidates) >= 20:
                         st.session_state["move_search_notice"] = "탐색 속도를 위해 상위 20개 후보만 표시합니다."
                     else:
-                        st.session_state["move_search_notice"] = f"표시 후보 {len(move_candidates)}개를 찾았습니다."
+                        st.session_state["move_search_notice"] = f"탐색 범위 내에서 찾은 후보 {len(move_candidates)}개를 표시합니다."
+                    progress_text.caption(st.session_state["move_search_notice"])
                     progress_box.success(st.session_state["move_search_notice"])
                 else:
                     st.session_state["move_search_notice"] = "현재 조건에서 가능한 이동 후보가 없습니다."
+                    progress_text.caption(st.session_state["move_search_notice"])
                     progress_box.info(st.session_state["move_search_notice"])
 
             stored_candidates = st.session_state.get("move_candidates", [])
