@@ -229,23 +229,29 @@ st.markdown(
     .calendar-wrap .empty {background:#ffffff;}
     .calendar-wrap .exam-block {
       display:flex !important;
-      min-height:58px;
+      min-height:0 !important;
       background:#bfdbfe;
       border:1px solid #60a5fa;
       border-radius:7px;
-      padding:6px 8px;
-      line-height:1.25;
+      padding:4px 6px;
+      line-height:1.15;
       white-space:normal;
       word-break:keep-all;
       overflow-wrap:anywhere;
+      overflow:hidden;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
       flex-direction:column;
       justify-content:center !important;
       align-items:center !important;
       text-align:center !important;
       width:100%;
-      height:100%;
+      height:auto;
       box-sizing:border-box;
+    }
+    .calendar-wrap .exam-block * {
+      line-height:1.15 !important;
+      margin-top:0 !important;
+      margin-bottom:0 !important;
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
@@ -561,10 +567,16 @@ st.markdown(
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
       overflow:hidden;
+      min-height:0 !important;
       max-width:100%;
-      line-height:1.2;
+      line-height:1.15;
       box-shadow:0 3px 10px rgba(15,23,42,.08);
       z-index:1;
+    }
+    .overall-abs-event * {
+      line-height:1.15 !important;
+      margin-top:0 !important;
+      margin-bottom:0 !important;
     }
     .overall-abs-title {
       font-size:9px;
@@ -592,6 +604,7 @@ st.markdown(
       display:block;
       width:100%;
       height:100%;
+      overflow:hidden;
       text-decoration:none !important;
       color:inherit !important;
     }
@@ -2561,7 +2574,7 @@ def build_overall_calendar_html(
                     )
                 event_divs.append(
                     f"<div class='overall-abs-event {grade_cls}' "
-                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px; {selected_style}'>"
+                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px; min-height:0; max-height:{height_px:.1f}px; {selected_style}'>"
                     f"{event_body}"
                     "</div>"
                 )
