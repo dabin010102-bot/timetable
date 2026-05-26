@@ -847,13 +847,100 @@ def normalize_exact(text: str) -> str:
     return x.lower()
 
 
-def slot_to_time(slot: int) -> str:
-    mins = 9 * 60 + slot * 30
+BASE_TIME_MINUTES = 9 * 60
+SLOT_MINUTES = 30
+
+
+def minute_to_time(minute: int | float | str | None) -> str:
+    if minute is None or pd.isna(minute):
+        return ""
+    try:
+        mins = int(round(float(minute)))
+    except (TypeError, ValueError):
+        return ""
     return f"{mins // 60:02d}:{mins % 60:02d}"
 
 
-def minute_to_time(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
+def slot_to_time(slot: int | float | str | None) -> str:
+    if slot is None or pd.isna(slot):
+        return ""
+    try:
+        slot_float = float(slot)
+    except (TypeError, ValueError):
+        return ""
+    mins = BASE_TIME_MINUTES + int(round(slot_float * SLOT_MINUTES))
+    return minute_to_time(mins)
+
+
+def format_time_label(value) -> str:
+    """화면 표시용 시간을 항상 HH:MM으로 정리한다."""
+    if value is None or pd.isna(value):
+        return ""
+    if isinstance(value, (datetime, pd.Timestamp)):
+        return pd.to_datetime(value).strftime("%H:%M")
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "nat"}:
+        return ""
+    m = re.match(r"^(\d{1,2}):(\d{1,2})$", text)
+    if m:
+        return f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"
+    digits = re.sub(r"\D", "", text)
+    if len(digits) in {3, 4}:
+        hour = int(digits[:-2])
+        minute = int(digits[-2:])
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return f"{hour:02d}:{minute:02d}"
+    try:
+        num = float(text)
+    except ValueError:
+        return text
+    if 0 <= num < 24:
+        hour = int(num)
+        minute = int(round((num - hour) * 60))
+        if minute == 60:
+            hour += 1
+            minute = 0
+        return f"{hour:02d}:{minute:02d}"
+    if 0 <= num < 2400 and float(num).is_integer():
+        raw = f"{int(num):04d}"
+        hour = int(raw[:-2])
+        minute = int(raw[-2:])
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return f"{hour:02d}:{minute:02d}"
+    return text
+
+
+def format_time_range(start, end) -> str:
+    start_txt = format_time_label(start)
+    end_txt = format_time_label(end)
+    if start_txt and end_txt:
+        return f"{start_txt}~{end_txt}"
+    return start_txt or end_txt or "시간 미정"
+
+
+def normalize_time_display_columns(df_src: pd.DataFrame) -> pd.DataFrame:
+    """계산용 슬롯은 유지하고, 화면/다운로드용 시작·종료 문자열만 정규화한다."""
+    out = df_src.copy()
+    if "시작슬롯" in out.columns:
+        start_slots = pd.to_numeric(out["시작슬롯"], errors="coerce")
+        out["시작"] = start_slots.apply(lambda x: slot_to_time(x) if pd.notna(x) else "")
+        if "시험시간(분)" in out.columns:
+            durations = pd.to_numeric(out["시험시간(분)"], errors="coerce")
+            out["종료"] = [
+                minute_to_time(BASE_TIME_MINUTES + float(s) * SLOT_MINUTES + float(d))
+                if pd.notna(s) and pd.notna(d)
+                else ""
+                for s, d in zip(start_slots, durations)
+            ]
+        elif "표시종료슬롯" in out.columns:
+            end_slots = pd.to_numeric(out["표시종료슬롯"], errors="coerce")
+            out["종료"] = end_slots.apply(lambda x: slot_to_time(x) if pd.notna(x) else "")
+    else:
+        if "시작" in out.columns:
+            out["시작"] = out["시작"].apply(format_time_label)
+        if "종료" in out.columns:
+            out["종료"] = out["종료"].apply(format_time_label)
+    return out
 
 
 def to_korean_course_name(course: str) -> str:
@@ -2004,14 +2091,14 @@ def build_calendar_html(df_student: pd.DataFrame, target_week: int, clickable: b
                 span = int(info["span"])
                 show_course = r.get("과목명", r.get("과목", ""))
                 grade_txt = format_grade_label(r.get("학년", fallback_grade_for_course(r.get("과목", show_course))))
-                start_txt = str(r.get("시작", ""))
-                end_txt = str(r.get("종료", ""))
+                start_txt = format_time_label(r.get("시작", ""))
+                end_txt = format_time_label(r.get("종료", ""))
                 room_txt = str(r.get("강의실", "-"))
                 dur_txt = str(r.get("시험시간(분)", ""))
                 text_main = (
                     "<div class='exam-block'>"
                     f"<div class='course'>{show_course}<span class='grade-pill'>{grade_txt}</span></div>"
-                    f"<div>{start_txt}~{end_txt} · {dur_txt}분</div>"
+                    f"<div>{format_time_range(start_txt, end_txt)} · {dur_txt}분</div>"
                     f"<div class='room-line'>강의실 {room_txt}</div>"
                     "</div>"
                 )
@@ -2060,7 +2147,7 @@ def build_feasible_area_html(
     feasible_rows: list[dict] = []
     cell_delta: dict[tuple[str, str], float] = {}
     day_labels = ["월", "화", "수", "목", "금"]
-    duration_slots = int(
+    duration_slots = float(
         float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "표시종료슬롯"].iloc[0])
         - float(exam_df.loc[exam_df["시험인덱스"] == target_idx, "시작슬롯"].iloc[0])
     )
@@ -2083,7 +2170,7 @@ def build_feasible_area_html(
                 {
                     "요일": d,
                     "시작": slot_to_time(st_slot),
-                    "종료": slot_to_time(st_slot + duration_slots),
+                    "종료": slot_to_time(float(st_slot) + duration_slots),
                     "강의실": int(target_room),
                     "영향학생수": int(out["affected_students"]),
                     "하루3개증가": int(out["daily3_increase"]),
@@ -2202,7 +2289,7 @@ def generate_fallback_report_images(exam_df: pd.DataFrame, summary: dict, out_di
             y = 0.88
             for _, r in room_df.iterrows():
                 line = (
-                    f"{int(r['주차'])}주차 {r['요일']} {r['시작']}~{r['종료']}  |  "
+                    f"{int(r['주차'])}주차 {r['요일']} {format_time_range(r.get('시작', ''), r.get('종료', ''))}  |  "
                     f"{r['과목명']} ({int(r['시험시간(분)'])}분)"
                 )
                 fig.text(0.03, y, line, fontsize=11, va="top")
@@ -2272,7 +2359,7 @@ def build_decision_df(payload: dict, exam_df: pd.DataFrame) -> pd.DataFrame:
     fallback = exam_df.copy().sort_values(["주차", "요일번호", "시작슬롯", "과목명"])
     out = pd.DataFrame()
     out["과목명"] = fallback["과목명"]
-    out["x_iwdt"] = fallback.apply(lambda r: f"({int(r['주차'])}, {str(r['요일'])}, {str(r['시작'])})", axis=1)
+    out["x_iwdt"] = fallback.apply(lambda r: f"({int(r['주차'])}, {str(r['요일'])}, {format_time_label(r['시작'])})", axis=1)
     out["z_iwdtr"] = fallback["강의실"]
     out["TC"] = fallback["TimeMove_i"]
     out["RC"] = fallback["RoomChange_i"]
@@ -2446,7 +2533,7 @@ def build_overall_calendar_html(
                 selected_style = "border:2px solid #1d4ed8; box-shadow:0 0 0 2px rgba(37,99,235,.18);" if selected_exam_idx is not None and int(event["시험인덱스"]) == int(selected_exam_idx) else ""
                 course = html.escape(str(event.get("과목명", event.get("과목", ""))))
                 room = html.escape(str(event.get("강의실", "-")))
-                time_text = html.escape(f"{event.get('시작', '-')}~{event.get('종료', '-')}")
+                time_text = html.escape(format_time_range(event.get("시작", ""), event.get("종료", "")))
                 event_body = (
                     f"<div class='overall-abs-title'>{course}</div>"
                     f"<div class='overall-abs-sub'>{room}</div>"
@@ -2550,7 +2637,7 @@ def render_clickable_calendar(
                 r = starts[key]
                 exam_idx = int(r["시험인덱스"])
                 selected_mark = "선택됨\n" if int(st.session_state.get("sim_selected_idx") or -1) == exam_idx else ""
-                label = f"{selected_mark}{r['과목명']}\n{r['강의실']}\n{r['시작']}~{r['종료']}"
+                label = f"{selected_mark}{r['과목명']}\n{r['강의실']}\n{format_time_range(r.get('시작', ''), r.get('종료', ''))}"
                 if cols[idx].button(label, key=f"{key_prefix}_pick_{target_week}_{exam_idx}_{day}_{slot}"):
                     st.session_state.sim_selected_idx = exam_idx
                     st.rerun()
@@ -2646,8 +2733,8 @@ def make_student_calendar_png(df_student: pd.DataFrame, sid: str) -> bytes | Non
             [
                 f"{int(r['주차'])}주차",
                 str(r["요일"]),
-                str(r["시작"]),
-                str(r["종료"]),
+                format_time_label(r["시작"]),
+                format_time_label(r["종료"]),
                 str(r["과목명"]),
                 str(r["강의실"]),
             ]
@@ -2696,7 +2783,7 @@ def make_student_calendar_ics(df_student: pd.DataFrame, sid: str) -> bytes:
         week = esc(r.get("주차", "-"))
         uid = f"inutimetable-{sid}-{int(r.get('시험인덱스', 0))}@inu"
         desc = esc(
-            f"{week}주차 {r.get('요일', '')} {r.get('시작', '')}~{r.get('종료', '')} / "
+            f"{week}주차 {r.get('요일', '')} {format_time_range(r.get('시작', ''), r.get('종료', ''))} / "
             f"강의실 {room} / {r.get('시험시간(분)', '')}분"
         )
         lines.extend(
@@ -2774,10 +2861,12 @@ grade_map = build_grade_map_from_courseen(df_courseen)
 base_exam_df = add_change_columns(exam_df.copy(), orig_maps, grade_map)
 base_exam_df = fill_missing_grade(base_exam_df, grade_map)
 base_exam_df = ensure_professor_column(base_exam_df)
+base_exam_df = normalize_time_display_columns(base_exam_df)
 display_exam_df = apply_manual_moves(base_exam_df, st.session_state.manual_moves)
 display_exam_df = add_change_columns(display_exam_df, orig_maps, grade_map)
 display_exam_df = fill_missing_grade(display_exam_df, grade_map)
 display_exam_df = ensure_professor_column(display_exam_df)
+display_exam_df = normalize_time_display_columns(display_exam_df)
 opt_summary_df = build_optimization_summary_df(payload)
 verify_df = build_verify_df(payload)
 decision_df = build_decision_df(payload, display_exam_df)
@@ -2869,6 +2958,7 @@ if menu == "개인 조회":
                 df_student = student_exam_df(display_exam_df, df_is, row_idx)
                 df_student = add_change_columns_student(df_student, df_is, row_idx, orig_maps, grade_map)
                 df_student = fill_missing_grade(df_student, grade_map)
+                df_student = normalize_time_display_columns(df_student)
                 df_student_display = df_student.copy()
                 if "강의실목록" in df_student_display.columns:
                     df_student_display["강의실"] = df_student_display["강의실목록"].apply(format_student_room_choice)
@@ -2936,7 +3026,7 @@ if menu == "개인 조회":
                     with left_gc:
                         st.markdown(
                             f"**{row['과목명']}**  \n"
-                            f"{row['요일']} {row['시작']}~{row['종료']} / {row['강의실']}"
+                            f"{row['요일']} {format_time_range(row.get('시작', ''), row.get('종료', ''))} / {row['강의실']}"
                         )
                     with right_gc:
                         st.markdown(f"[Google Calendar에 추가]({gc_url})")
@@ -2978,6 +3068,7 @@ if menu == "개인 조회":
             else:
                 selected_professor = st.selectbox("검색 결과에서 선택", professor_options, key="professor_lookup_select")
                 df_professor = display_exam_df[display_exam_df["교수"].astype(str) == str(selected_professor)].copy()
+                df_professor = normalize_time_display_columns(df_professor)
                 df_professor = df_professor.sort_values(["주차", "요일번호", "시작슬롯", "과목명"]).reset_index(drop=True)
 
                 p1, p2 = st.columns(2)
@@ -3068,7 +3159,7 @@ elif menu == "이동 시뮬레이터":
     pick_options = []
     if not selectable_all.empty:
         for _, r in selectable_all.iterrows():
-            label = f"{r['과목명']} | {r['요일']} {r['시작']}~{r['종료']} | {r['강의실']}"
+            label = f"{r['과목명']} | {r['요일']} {format_time_range(r.get('시작', ''), r.get('종료', ''))} | {r['강의실']}"
             pick_options.append((label, int(r["시험인덱스"])))
         pre_label_to_idx = {label: idx for label, idx in pick_options}
         current_pick_label = st.session_state.get("sim_pick_exam")
@@ -3215,7 +3306,7 @@ elif menu == "이동 시뮬레이터":
             )
             st.caption(
                 f"선택 시험: {sel_row['과목명']} | "
-                f"{sel_row['요일']} {sel_row['시작']}~{sel_row['종료']} | "
+                f"{sel_row['요일']} {format_time_range(sel_row.get('시작', ''), sel_row.get('종료', ''))} | "
                 f"{sel_row['강의실']}"
             )
             st.caption("이동할 과목을 선택한 뒤 후보 탐색을 눌러주세요.")
@@ -3478,7 +3569,7 @@ elif menu == "이동 시뮬레이터":
                     unsafe_allow_html=True,
                 )
                 cand_df = pd.DataFrame(stored_candidates)
-                cand_df["시간후보"] = cand_df.apply(lambda r: f"{r['요일']} {r['시작']}~{r['종료']}", axis=1)
+                cand_df["시간후보"] = cand_df.apply(lambda r: f"{r['요일']} {format_time_range(r.get('시작', ''), r.get('종료', ''))}", axis=1)
                 time_summary = (
                     cand_df.groupby("시간후보", sort=False)
                     .agg(
