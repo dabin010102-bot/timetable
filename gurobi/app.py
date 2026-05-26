@@ -568,10 +568,12 @@ st.markdown(
       box-sizing:border-box;
       overflow:hidden;
       min-height:0 !important;
+      height:auto;
       max-width:100%;
       line-height:1.15;
       box-shadow:0 3px 10px rgba(15,23,42,.08);
       z-index:1;
+      display:block !important;
     }
     .overall-abs-event * {
       line-height:1.15 !important;
@@ -603,7 +605,8 @@ st.markdown(
     .overall-abs-link {
       display:block;
       width:100%;
-      height:100%;
+      height:auto;
+      max-height:100%;
       overflow:hidden;
       text-decoration:none !important;
       color:inherit !important;
@@ -2574,7 +2577,7 @@ def build_overall_calendar_html(
                     )
                 event_divs.append(
                     f"<div class='overall-abs-event {grade_cls}' "
-                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px; min-height:0; max-height:{height_px:.1f}px; {selected_style}'>"
+                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px !important; min-height:0 !important; max-height:{height_px:.1f}px !important; {selected_style}'>"
                     f"{event_body}"
                     "</div>"
                 )
