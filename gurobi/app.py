@@ -1035,7 +1035,7 @@ def build_exam_df(payload: dict) -> pd.DataFrame:
                 "시험시간(분)": dur_minutes,
                 "시작": slot_to_time(start_slot),
                 "종료": minute_to_time(9 * 60 + start_slot * 30 + dur_minutes),
-                "강의실": " or ".join(str(r) for r in rooms),
+                "강의실": format_room_choice(rooms),
                 "강의실목록": rooms,
                 "x_iwdt": 1,
                 "TimeMove_i": int(tmove.get(str(i), 0)),
@@ -1133,7 +1133,7 @@ def normalize_room_choice(new_room) -> list[int]:
 
 
 def format_room_choice(room_choice) -> str:
-    return " or ".join(str(x) for x in normalize_room_choice(room_choice))
+    return ", ".join(str(x) for x in normalize_room_choice(room_choice))
 
 
 def format_student_room_choice(room_choice) -> str:
@@ -1510,7 +1510,7 @@ def score_move_impact(
     end_mins = int(9 * 60 + int(new_start) * 30 + int(float(trow["시험시간(분)"])))
     sim.loc[mask, "종료"] = minute_to_time(end_mins)
     sim.loc[mask, "강의실목록"] = [list(new_rooms)]
-    sim.loc[mask, "강의실"] = " ".join(str(x) for x in new_rooms)
+    sim.loc[mask, "강의실"] = format_room_choice(new_rooms)
 
     # 변경 건수/영향
     time_changed = int((int(trow["주차"]) != int(new_week)) or (int(trow["요일번호"]) != int(new_day)) or (int(trow["시작슬롯"]) != int(new_start)))
@@ -1841,7 +1841,7 @@ def add_change_columns(df: pd.DataFrame, orig_maps: dict[str, dict], grade_map: 
         else:
             old_time.append("-")
 
-        old_room.append(" ".join(str(x) for x in sorted(rooms)) if rooms else "-")
+        old_room.append(format_room_choice(sorted(rooms)) if rooms else "-")
 
     out["학년"] = grade_col
     out["기존시간"] = old_time
@@ -1952,7 +1952,7 @@ def add_change_columns_student(
             old_time.append(", ".join(parts))
         else:
             old_time.append("-")
-        old_room.append(" ".join(str(x) for x in sorted(rooms)) if rooms else "-")
+        old_room.append(format_room_choice(sorted(rooms)) if rooms else "-")
         time_status.append("시간 변경" if time_changed else "유지")
         room_status.append("강의실 변경" if room_changed else "유지")
         final_status.append(fs)
