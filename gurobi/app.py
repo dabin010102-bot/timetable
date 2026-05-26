@@ -229,29 +229,23 @@ st.markdown(
     .calendar-wrap .empty {background:#ffffff;}
     .calendar-wrap .exam-block {
       display:flex !important;
-      min-height:0 !important;
+      min-height:58px;
       background:#bfdbfe;
       border:1px solid #60a5fa;
       border-radius:7px;
-      padding:4px 6px;
-      line-height:1.15;
+      padding:6px 8px;
+      line-height:1.25;
       white-space:normal;
       word-break:keep-all;
       overflow-wrap:anywhere;
-      overflow:hidden;
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.45);
       flex-direction:column;
       justify-content:center !important;
       align-items:center !important;
       text-align:center !important;
       width:100%;
-      height:auto;
+      height:100%;
       box-sizing:border-box;
-    }
-    .calendar-wrap .exam-block * {
-      line-height:1.15 !important;
-      margin-top:0 !important;
-      margin-bottom:0 !important;
     }
     .calendar-wrap .exam-link {
       text-decoration:none !important;
@@ -526,9 +520,9 @@ st.markdown(
         repeating-linear-gradient(
           to bottom,
           #f8fbff 0,
-          #f8fbff calc(var(--calendar-slot-height, 52px) - 1px),
-          #edf2f7 calc(var(--calendar-slot-height, 52px) - 1px),
-          #edf2f7 var(--calendar-slot-height, 52px)
+          #f8fbff 47px,
+          #edf2f7 47px,
+          #edf2f7 48px
         );
       border-right:1px solid #d8e0ea;
     }
@@ -536,8 +530,8 @@ st.markdown(
       position:absolute;
       left:0;
       width:100%;
-      height:var(--calendar-slot-height, 52px);
-      line-height:var(--calendar-slot-height, 52px);
+      height:48px;
+      line-height:48px;
       transform:none;
       text-align:center;
       font-size:9px;
@@ -551,9 +545,9 @@ st.markdown(
         repeating-linear-gradient(
           to bottom,
           #ffffff 0,
-          #ffffff calc(var(--calendar-slot-height, 52px) - 1px),
-          #edf2f7 calc(var(--calendar-slot-height, 52px) - 1px),
-          #edf2f7 var(--calendar-slot-height, 52px)
+          #ffffff 47px,
+          #edf2f7 47px,
+          #edf2f7 48px
         );
       overflow:hidden;
     }
@@ -567,18 +561,10 @@ st.markdown(
       border:1px solid rgba(15,23,42,.10);
       box-sizing:border-box;
       overflow:hidden;
-      min-height:0 !important;
-      height:auto;
       max-width:100%;
-      line-height:1.15;
+      line-height:1.2;
       box-shadow:0 3px 10px rgba(15,23,42,.08);
       z-index:1;
-      display:block !important;
-    }
-    .overall-abs-event * {
-      line-height:1.15 !important;
-      margin-top:0 !important;
-      margin-bottom:0 !important;
     }
     .overall-abs-title {
       font-size:9px;
@@ -605,9 +591,7 @@ st.markdown(
     .overall-abs-link {
       display:block;
       width:100%;
-      height:auto;
-      max-height:100%;
-      overflow:hidden;
+      height:100%;
       text-decoration:none !important;
       color:inherit !important;
     }
@@ -2464,7 +2448,7 @@ def build_overall_calendar_html(
     selected_exam_idx: int | None = None,
     clickable: bool = False,
 ) -> str:
-    slot_height = 52
+    slot_height = 48
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
@@ -2479,14 +2463,8 @@ def build_overall_calendar_html(
             continue
         event = r.to_dict()
         event["start_slot_float"] = float(r.get("시작슬롯", 0))
-        duration_minutes = pd.to_numeric(pd.Series([r.get("시험시간(분)", None)]), errors="coerce").iloc[0]
-        if pd.isna(duration_minutes):
-            duration_minutes = (
-                float(r.get("표시종료슬롯", r.get("종료슬롯", event["start_slot_float"])))
-                - event["start_slot_float"]
-            ) * SLOT_MINUTES
-        event["duration_slots_float"] = max(0.0, float(duration_minutes) / SLOT_MINUTES)
-        event["end_slot_float"] = min(float(slot_count), event["start_slot_float"] + event["duration_slots_float"])
+        end_slot_float = float(r.get("표시종료슬롯", r.get("종료슬롯", 0)))
+        event["end_slot_float"] = max(event["start_slot_float"] + 1.0, min(float(slot_count), end_slot_float))
         day_events[day].append(event)
 
     legend_items = [
@@ -2559,7 +2537,7 @@ def build_overall_calendar_html(
                 lane_idx = lane_by_exam[int(event["시험인덱스"])]
                 left_pct = lane_idx * width_pct
                 top_px = float(event["start_slot_float"]) * slot_height
-                height_px = float(event["duration_slots_float"]) * slot_height
+                height_px = max(36.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height)
                 grade_cls = overall_calendar_grade_class(event.get("학년", "-"))
                 selected_style = "border:2px solid #1d4ed8; box-shadow:0 0 0 2px rgba(37,99,235,.18);" if selected_exam_idx is not None and int(event["시험인덱스"]) == int(selected_exam_idx) else ""
                 course = html.escape(str(event.get("과목명", event.get("과목", ""))))
@@ -2577,7 +2555,7 @@ def build_overall_calendar_html(
                     )
                 event_divs.append(
                     f"<div class='overall-abs-event {grade_cls}' "
-                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px !important; min-height:0 !important; max-height:{height_px:.1f}px !important; {selected_style}'>"
+                    f"style='top:{top_px:.1f}px; left:calc({left_pct:.6f}% + 2px); width:calc({width_pct:.6f}% - 4px); height:{height_px:.1f}px; {selected_style}'>"
                     f"{event_body}"
                     "</div>"
                 )
@@ -2597,7 +2575,7 @@ def build_overall_calendar_html(
         "<div class='overall-legend'>"
         + "".join(html_parts[1:-1])
         + "</div>"
-        + f"<div class='overall-abs-wrap'><div class='overall-abs-shell' style='--calendar-slot-height:{slot_height}px;'>"
+        + "<div class='overall-abs-wrap'><div class='overall-abs-shell'>"
         + "<div class='overall-abs-header'><div class='overall-abs-head'>시간</div>"
         + "".join(f"<div class='overall-abs-head'>{h}</div>" for h in day_headers)
         + "</div>"
