@@ -530,9 +530,7 @@ st.markdown(
       position:absolute;
       left:0;
       width:100%;
-      height:36px;
-      line-height:36px;
-      transform:none;
+      transform:translateY(-50%);
       text-align:center;
       font-size:9px;
       font-weight:800;
@@ -2537,8 +2535,8 @@ def build_overall_calendar_html(
             for event in group:
                 lane_idx = lane_by_exam[int(event["시험인덱스"])]
                 left_pct = lane_idx * width_pct
-                top_px = float(event["start_slot_float"]) * slot_height + 1.0
-                height_px = max(30.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height - 2.0)
+                top_px = float(event["start_slot_float"]) * slot_height
+                height_px = max(36.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height)
                 grade_cls = overall_calendar_grade_class(event.get("학년", "-"))
                 selected_style = "border:2px solid #1d4ed8; box-shadow:0 0 0 2px rgba(37,99,235,.18);" if selected_exam_idx is not None and int(event["시험인덱스"]) == int(selected_exam_idx) else ""
                 course = html.escape(str(event.get("과목명", event.get("과목", ""))))
@@ -2564,11 +2562,11 @@ def build_overall_calendar_html(
         return f"<div class='overall-abs-day-col' style='height:{total_height}px;'>{''.join(event_divs)}</div>"
 
     time_labels = []
-    for slot in range(0, slot_count):
+    for slot in range(0, slot_count + 1):
         top_px = slot * slot_height
-        label = slot_to_time(slot)
+        label = slot_to_time(slot) if slot < slot_count else "20:00"
         time_labels.append(
-            f"<div class='overall-abs-time-label' style='top:{top_px}px; height:{slot_height}px; line-height:{slot_height}px;'>{html.escape(label)}</div>"
+            f"<div class='overall-abs-time-label' style='top:{top_px}px'>{html.escape(label)}</div>"
         )
 
     day_columns = [build_day_column(day_events[day]) for day in DAY_ORDER]
