@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 import io
 from itertools import combinations
 from pathlib import Path
@@ -3247,14 +3248,36 @@ elif menu == "이동 시뮬레이터":
                     room_combo_candidates.append(tuple(int(r) for r in combo))
             if not room_combo_candidates:
                 room_combo_candidates = [tuple(int(r) for r in current_rooms)]
+            current_room_set_for_sort = set(int(r) for r in current_rooms)
+            room_combo_candidates = sorted(
+                room_combo_candidates,
+                key=lambda combo: (
+                    0 if set(combo) == current_room_set_for_sort else 1,
+                    -len(set(combo) & current_room_set_for_sort),
+                    sum(
+                        min(
+                            abs(ROOM_ORDER.index(int(r)) - ROOM_ORDER.index(int(cr)))
+                            for cr in current_rooms
+                            if int(cr) in ROOM_ORDER
+                        )
+                        if int(r) in ROOM_ORDER and any(int(cr) in ROOM_ORDER for cr in current_rooms)
+                        else len(ROOM_ORDER)
+                        for r in combo
+                    ),
+                    sum(ROOM_CAP[int(r)] for r in combo),
+                ),
+            )
 
             orig_start_slot = int(sel_row["시작슬롯"])
+            orig_day_no = int(sel_row["요일번호"])
             start_slots_to_search = [
-                st_slot for st_slot in range(max(0, orig_start_slot - 2), min(19, orig_start_slot + 3))
+                st_slot for st_slot in [orig_start_slot, orig_start_slot - 1, orig_start_slot + 1, orig_start_slot - 2, orig_start_slot + 2]
+                if 0 <= st_slot < 19
                 if st_slot + dur_slots <= 22
             ]
             if not start_slots_to_search:
                 start_slots_to_search = [orig_start_slot]
+            day_candidates = sorted([1, 2, 3, 4, 5], key=lambda d: (0 if d == orig_day_no else 1, abs(d - orig_day_no), d))
 
             blocked_counts = {
                 "주차 고정 위반": 0,
@@ -3270,20 +3293,24 @@ elif menu == "이동 시뮬레이터":
             st.markdown("<div class='sim-step-title'>4. 후보 탐색</div>", unsafe_allow_html=True)
             st.markdown("<div class='sim-action-note'>탐색 속도를 위해 현재 주차, 현재 시작시간 주변을 우선 확인합니다.</div>", unsafe_allow_html=True)
             if st.button("후보 탐색", key="search_move_candidates_btn", type="primary"):
+                MAX_CANDIDATES = 20
                 move_candidates: list[dict] = []
                 progress_box = st.empty()
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
-                total_steps = max(1, len(allowed_weeks) * 5 * len(start_slots_to_search) * len(room_combo_candidates))
+                total_steps = max(1, len(allowed_weeks) * len(day_candidates) * len(start_slots_to_search) * len(room_combo_candidates))
                 current_step = 0
+                searched_candidates = 0
+                early_stop = False
+                search_started = time.perf_counter()
                 try:
                     stop_search = False
                     student_sets = build_exam_student_sets(exam_df_view, df_is)
                     with st.spinner("후보 탐색 중입니다..."):
-                        progress_box.info("상위 이동 후보를 탐색 중입니다...")
+                        progress_box.info("탐색 범위 내 상위 후보를 확인 중입니다.")
                         progress_text.caption("잠시만 기다려주세요. 탐색 범위 내 후보를 확인하고 있습니다.")
                         for week in allowed_weeks:
-                            for dnum in [1, 2, 3, 4, 5]:
+                            for dnum in day_candidates:
                                 for st_slot in start_slots_to_search:
                                     if st_slot + dur_slots > 22:
                                         continue
@@ -3292,11 +3319,13 @@ elif menu == "이동 시뮬레이터":
                                         progress = min(current_step / total_steps, 1.0)
                                         progress_text.caption(f"탐색 범위 내 후보 확인 중... {current_step} / {total_steps}")
                                         progress_bar.progress(progress)
-                                        if len(move_candidates) >= 20:
+                                        if len(move_candidates) >= MAX_CANDIDATES:
                                             stop_search = True
+                                            early_stop = True
                                             progress_bar.progress(1.0)
                                             progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
                                             break
+                                        searched_candidates += 1
                                         out_eval = scorer(
                                             exam_df=exam_df_view,
                                             target_idx=sel_idx,
@@ -3374,6 +3403,12 @@ elif menu == "이동 시뮬레이터":
                                                     "slot": int(st_slot),
                                                 }
                                             )
+                                            if len(move_candidates) >= MAX_CANDIDATES:
+                                                stop_search = True
+                                                early_stop = True
+                                                progress_bar.progress(1.0)
+                                                progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
+                                                break
                                         else:
                                             reason = str(out_eval.get("reason", ""))
                                             if "강의실 중복" in reason:
@@ -3395,8 +3430,16 @@ elif menu == "이동 시뮬레이터":
                     )
                 except Exception as _calc_err:
                     st.error(f"후보 계산 중 오류: {_calc_err}")
+                elapsed = time.perf_counter() - search_started
+                logging.getLogger("inutimetable.move_search").info(
+                    "searched_candidates=%s early_stop=%s displayed_candidates=%s elapsed=%.3f",
+                    searched_candidates,
+                    early_stop,
+                    len(move_candidates),
+                    elapsed,
+                )
                 blocked_counts["표시 후보 수"] = len(move_candidates)
-                blocked_counts["탐색 조기중단"] = 1 if len(move_candidates) >= int(blocked_counts.get("탐색 표시 상한", 20)) else 0
+                blocked_counts["탐색 조기중단"] = 1 if early_stop else 0
                 st.session_state["move_candidates"] = move_candidates
                 st.session_state["move_candidate_reasons"] = blocked_counts
                 st.session_state["move_candidate_meta"] = current_candidate_context
