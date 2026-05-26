@@ -3294,11 +3294,19 @@ elif menu == "이동 시뮬레이터":
             st.markdown("<div class='sim-action-note'>탐색 속도를 위해 현재 주차, 현재 시작시간 주변을 우선 확인합니다.</div>", unsafe_allow_html=True)
             if st.button("후보 탐색", key="search_move_candidates_btn", type="primary"):
                 MAX_CANDIDATES = 20
+                search_plan = [
+                    (int(week), int(dnum), int(st_slot), tuple(int(r) for r in room_combo))
+                    for week in allowed_weeks
+                    for dnum in day_candidates
+                    for st_slot in start_slots_to_search
+                    if int(st_slot) + dur_slots <= 22
+                    for room_combo in room_combo_candidates
+                ][:MAX_CANDIDATES]
                 move_candidates: list[dict] = []
                 progress_box = st.empty()
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
-                total_steps = max(1, len(allowed_weeks) * len(day_candidates) * len(start_slots_to_search) * len(room_combo_candidates))
+                total_steps = max(1, len(search_plan))
                 current_step = 0
                 searched_candidates = 0
                 early_stop = False
@@ -3309,120 +3317,105 @@ elif menu == "이동 시뮬레이터":
                     with st.spinner("후보 탐색 중입니다..."):
                         progress_box.info("탐색 범위 내 상위 후보를 확인 중입니다.")
                         progress_text.caption("잠시만 기다려주세요. 탐색 범위 내 후보를 확인하고 있습니다.")
-                        for week in allowed_weeks:
-                            for dnum in day_candidates:
-                                for st_slot in start_slots_to_search:
-                                    if st_slot + dur_slots > 22:
-                                        continue
-                                    for room_combo in room_combo_candidates:
-                                        current_step += 1
-                                        progress = min(current_step / total_steps, 1.0)
-                                        progress_text.caption(f"탐색 범위 내 후보 확인 중... {current_step} / {total_steps}")
-                                        progress_bar.progress(progress)
-                                        if len(move_candidates) >= MAX_CANDIDATES:
-                                            stop_search = True
-                                            early_stop = True
-                                            progress_bar.progress(1.0)
-                                            progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
-                                            break
-                                        searched_candidates += 1
-                                        out_eval = scorer(
-                                            exam_df=exam_df_view,
-                                            target_idx=sel_idx,
-                                            new_week=int(week),
-                                            new_day=int(dnum),
-                                            new_start=int(st_slot),
-                                            new_room=list(room_combo),
-                                            student_sets=student_sets,
-                                            summary=summary,
-                                        )
-                                        if out_eval.get("feasible", False):
-                                            warning_items = []
-                                            orig_day = int(sel_row["요일번호"])
-                                            orig_start = int(sel_row["시작슬롯"])
-                                            current_room_set = set(int(x) for x in normalize_room_choice(sel_row["강의실목록"]))
-                                            candidate_room_set = set(int(x) for x in normalize_room_choice(room_combo))
-                                            if (
-                                                int(week) == int(sel_row["주차"])
-                                                and int(dnum) == orig_day
-                                                and int(st_slot) == orig_start
-                                                and sorted(candidate_room_set) == sorted(current_room_set)
-                                            ):
-                                                continue
-                                            room_change_delta = int(out_eval.get("room_change_delta", 0))
-                                            time_move_delta = int(out_eval.get("time_move_delta", 0))
-                                            daily_penalty_delta = int(out_eval.get("daily_penalty_delta", 0))
-                                            objective_delta = (
-                                                WEIGHT_ROOM_MOVE * room_change_delta
-                                                + WEIGHT_TIME_MOVE * time_move_delta
-                                                + WEIGHT_DAILY * daily_penalty_delta
-                                            )
-                                            if room_change_delta == 0 and time_move_delta == 0 and daily_penalty_delta == 0:
-                                                objective_delta = 0.0
-                                            if abs(objective_delta) <= 1e-6:
-                                                objective_delta = 0.0
-                                            time_changed = (int(dnum), int(st_slot)) != (orig_day, orig_start)
-                                            room_changed = candidate_room_set != current_room_set
-                                            daily_exam_increase = int(out_eval.get("daily3_increase", 0)) + int(out_eval.get("daily4_increase", 0))
-                                            distance_from_current = abs(int(dnum) - orig_day) + abs(int(st_slot) - orig_start)
-                                            if abs(int(dnum) - orig_day) > D_MAX:
-                                                warning_items.append("하루 시험 수 기준 초과")
-                                            if abs(int(st_slot) - orig_start) > T_MAX:
-                                                warning_items.append("연속 시험 시간 기준 초과")
-                                            if time_changed:
-                                                warning_items.append("시간 변경 발생")
-                                            if room_changed:
-                                                warning_items.append("강의실 변경 발생")
-                                            if daily_exam_increase > 0:
-                                                warning_items.append("하루 시험 수 증가")
-                                            if objective_delta > 1e-6:
-                                                warning_items.append("목적함수 증가")
-
-                                            move_candidates.append(
-                                                {
-                                                    "요일": DAY_LABELS.get(dnum, str(dnum)),
-                                                    "시작": slot_to_time(st_slot),
-                                                    "종료": minute_to_time(540 + st_slot * 30 + int(sel_row["시험시간(분)"])),
-                                                    "강의실": format_room_choice(room_combo),
-                                                    "room_combo": list(room_combo),
-                                                    "영향학생수": int(out_eval.get("affected_students", 0)),
-                                                    "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
-                                                    "하루3개증가": int(out_eval.get("daily3_increase", 0)),
-                                                    "하루4개증가": int(out_eval.get("daily4_increase", 0)),
-                                                    "목적함수변화": float(objective_delta),
-                                                    "daily_exam_increase": int(daily_exam_increase),
-                                                    "daily_penalty_delta": int(daily_penalty_delta),
-                                                    "room_change_delta": int(room_change_delta),
-                                                    "time_move_delta": int(time_move_delta),
-                                                    "time_changed": bool(time_changed),
-                                                    "room_changed": bool(room_changed),
-                                                    "distance_from_current": int(distance_from_current),
-                                                    "경고": ", ".join(warning_items) if warning_items else "-",
-                                                    "week": int(week),
-                                                    "dnum": int(dnum),
-                                                    "slot": int(st_slot),
-                                                }
-                                            )
-                                            if len(move_candidates) >= MAX_CANDIDATES:
-                                                stop_search = True
-                                                early_stop = True
-                                                progress_bar.progress(1.0)
-                                                progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
-                                                break
-                                        else:
-                                            reason = str(out_eval.get("reason", ""))
-                                            if "강의실 중복" in reason:
-                                                blocked_counts["강의실 중복"] += 1
-                                            elif "학생 동시시험" in reason:
-                                                blocked_counts["학생 동시시험"] += 1
-                                        if stop_search:
-                                            break
-                                    if stop_search:
-                                        break
-                                if stop_search:
-                                    break
-                            if stop_search:
+                        for week, dnum, st_slot, room_combo in search_plan:
+                            current_step += 1
+                            searched_candidates += 1
+                            progress = min(current_step / total_steps, 1.0)
+                            progress_text.caption(f"탐색 범위 내 상위 후보 확인 중... {current_step} / {total_steps}")
+                            progress_bar.progress(progress)
+                            if len(move_candidates) >= MAX_CANDIDATES:
+                                stop_search = True
+                                early_stop = True
                                 break
+                            out_eval = scorer(
+                                exam_df=exam_df_view,
+                                target_idx=sel_idx,
+                                new_week=int(week),
+                                new_day=int(dnum),
+                                new_start=int(st_slot),
+                                new_room=list(room_combo),
+                                student_sets=student_sets,
+                                summary=summary,
+                            )
+                            if out_eval.get("feasible", False):
+                                warning_items = []
+                                orig_day = int(sel_row["요일번호"])
+                                orig_start = int(sel_row["시작슬롯"])
+                                current_room_set = set(int(x) for x in normalize_room_choice(sel_row["강의실목록"]))
+                                candidate_room_set = set(int(x) for x in normalize_room_choice(room_combo))
+                                if (
+                                    int(week) == int(sel_row["주차"])
+                                    and int(dnum) == orig_day
+                                    and int(st_slot) == orig_start
+                                    and sorted(candidate_room_set) == sorted(current_room_set)
+                                ):
+                                    continue
+                                room_change_delta = int(out_eval.get("room_change_delta", 0))
+                                time_move_delta = int(out_eval.get("time_move_delta", 0))
+                                daily_penalty_delta = int(out_eval.get("daily_penalty_delta", 0))
+                                objective_delta = (
+                                    WEIGHT_ROOM_MOVE * room_change_delta
+                                    + WEIGHT_TIME_MOVE * time_move_delta
+                                    + WEIGHT_DAILY * daily_penalty_delta
+                                )
+                                if room_change_delta == 0 and time_move_delta == 0 and daily_penalty_delta == 0:
+                                    objective_delta = 0.0
+                                if abs(objective_delta) <= 1e-6:
+                                    objective_delta = 0.0
+                                time_changed = (int(dnum), int(st_slot)) != (orig_day, orig_start)
+                                room_changed = candidate_room_set != current_room_set
+                                daily_exam_increase = int(out_eval.get("daily3_increase", 0)) + int(out_eval.get("daily4_increase", 0))
+                                distance_from_current = abs(int(dnum) - orig_day) + abs(int(st_slot) - orig_start)
+                                if abs(int(dnum) - orig_day) > D_MAX:
+                                    warning_items.append("하루 시험 수 기준 초과")
+                                if abs(int(st_slot) - orig_start) > T_MAX:
+                                    warning_items.append("연속 시험 시간 기준 초과")
+                                if time_changed:
+                                    warning_items.append("시간 변경 발생")
+                                if room_changed:
+                                    warning_items.append("강의실 변경 발생")
+                                if daily_exam_increase > 0:
+                                    warning_items.append("하루 시험 수 증가")
+                                if objective_delta > 1e-6:
+                                    warning_items.append("목적함수 증가")
+
+                                move_candidates.append(
+                                    {
+                                        "요일": DAY_LABELS.get(dnum, str(dnum)),
+                                        "시작": slot_to_time(st_slot),
+                                        "종료": minute_to_time(540 + st_slot * 30 + int(sel_row["시험시간(분)"])),
+                                        "강의실": format_room_choice(room_combo),
+                                        "room_combo": list(room_combo),
+                                        "영향학생수": int(out_eval.get("affected_students", 0)),
+                                        "학생충돌수": int(out_eval.get("student_conflict_count", 0)),
+                                        "하루3개증가": int(out_eval.get("daily3_increase", 0)),
+                                        "하루4개증가": int(out_eval.get("daily4_increase", 0)),
+                                        "목적함수변화": float(objective_delta),
+                                        "daily_exam_increase": int(daily_exam_increase),
+                                        "daily_penalty_delta": int(daily_penalty_delta),
+                                        "room_change_delta": int(room_change_delta),
+                                        "time_move_delta": int(time_move_delta),
+                                        "time_changed": bool(time_changed),
+                                        "room_changed": bool(room_changed),
+                                        "distance_from_current": int(distance_from_current),
+                                        "경고": ", ".join(warning_items) if warning_items else "-",
+                                        "week": int(week),
+                                        "dnum": int(dnum),
+                                        "slot": int(st_slot),
+                                    }
+                                )
+                                if len(move_candidates) >= MAX_CANDIDATES:
+                                    stop_search = True
+                                    early_stop = True
+                                    break
+                            else:
+                                reason = str(out_eval.get("reason", ""))
+                                if "강의실 중복" in reason:
+                                    blocked_counts["강의실 중복"] += 1
+                                elif "학생 동시시험" in reason:
+                                    blocked_counts["학생 동시시험"] += 1
+                        if stop_search:
+                            progress_text.caption("탐색 속도를 위해 상위 후보만 표시합니다.")
                     progress_bar.progress(1.0)
                     move_candidates = sorted(
                         move_candidates,
