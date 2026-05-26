@@ -526,9 +526,9 @@ st.markdown(
         repeating-linear-gradient(
           to bottom,
           #f8fbff 0,
-          #f8fbff 35px,
-          #edf2f7 35px,
-          #edf2f7 36px
+          #f8fbff calc(var(--calendar-slot-height, 52px) - 1px),
+          #edf2f7 calc(var(--calendar-slot-height, 52px) - 1px),
+          #edf2f7 var(--calendar-slot-height, 52px)
         );
       border-right:1px solid #d8e0ea;
     }
@@ -536,8 +536,8 @@ st.markdown(
       position:absolute;
       left:0;
       width:100%;
-      height:36px;
-      line-height:36px;
+      height:var(--calendar-slot-height, 52px);
+      line-height:var(--calendar-slot-height, 52px);
       transform:none;
       text-align:center;
       font-size:9px;
@@ -551,9 +551,9 @@ st.markdown(
         repeating-linear-gradient(
           to bottom,
           #ffffff 0,
-          #ffffff 35px,
-          #edf2f7 35px,
-          #edf2f7 36px
+          #ffffff calc(var(--calendar-slot-height, 52px) - 1px),
+          #edf2f7 calc(var(--calendar-slot-height, 52px) - 1px),
+          #edf2f7 var(--calendar-slot-height, 52px)
         );
       overflow:hidden;
     }
@@ -2464,7 +2464,7 @@ def build_overall_calendar_html(
     selected_exam_idx: int | None = None,
     clickable: bool = False,
 ) -> str:
-    slot_height = 36
+    slot_height = 52
     slot_count = 22
     df_w = df_src[df_src["주차"] == target_week].copy()
     if df_w.empty:
@@ -2597,7 +2597,7 @@ def build_overall_calendar_html(
         "<div class='overall-legend'>"
         + "".join(html_parts[1:-1])
         + "</div>"
-        + "<div class='overall-abs-wrap'><div class='overall-abs-shell'>"
+        + f"<div class='overall-abs-wrap'><div class='overall-abs-shell' style='--calendar-slot-height:{slot_height}px;'>"
         + "<div class='overall-abs-header'><div class='overall-abs-head'>시간</div>"
         + "".join(f"<div class='overall-abs-head'>{h}</div>" for h in day_headers)
         + "</div>"
