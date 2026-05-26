@@ -2456,7 +2456,6 @@ def build_overall_calendar_html(
     df_w = df_w[df_w["요일번호"].isin([1, 2, 3, 4, 5])].copy()
     if df_w.empty:
         return "<div class='candidate-card'><div class='candidate-card-title'>안내</div><div class='candidate-card-sub'>해당 주차 평일 시험이 없습니다.</div></div>"
-    df_w["표시종료슬롯"] = pd.to_numeric(df_w["표시종료슬롯"], errors="coerce").fillna(df_w["종료슬롯"])
     day_events: dict[str, list[dict]] = {day: [] for day in DAY_ORDER}
     for _, r in df_w.sort_values(["요일번호", "시작슬롯", "표시종료슬롯", "과목명"]).iterrows():
         day = str(r.get("요일", ""))
@@ -2464,8 +2463,14 @@ def build_overall_calendar_html(
             continue
         event = r.to_dict()
         event["start_slot_float"] = float(r.get("시작슬롯", 0))
-        end_slot_float = float(r.get("표시종료슬롯", r.get("종료슬롯", 0)))
-        event["end_slot_float"] = max(event["start_slot_float"] + 1.0, min(float(slot_count), end_slot_float))
+        duration_minutes = pd.to_numeric(pd.Series([r.get("시험시간(분)", None)]), errors="coerce").iloc[0]
+        if pd.isna(duration_minutes):
+            duration_minutes = (
+                float(r.get("표시종료슬롯", r.get("종료슬롯", event["start_slot_float"])))
+                - event["start_slot_float"]
+            ) * SLOT_MINUTES
+        event["duration_slots_float"] = max(0.0, float(duration_minutes) / SLOT_MINUTES)
+        event["end_slot_float"] = min(float(slot_count), event["start_slot_float"] + event["duration_slots_float"])
         day_events[day].append(event)
 
     legend_items = [
@@ -2538,7 +2543,7 @@ def build_overall_calendar_html(
                 lane_idx = lane_by_exam[int(event["시험인덱스"])]
                 left_pct = lane_idx * width_pct
                 top_px = float(event["start_slot_float"]) * slot_height
-                height_px = max(36.0, (float(event["end_slot_float"]) - float(event["start_slot_float"])) * slot_height)
+                height_px = float(event["duration_slots_float"]) * slot_height
                 grade_cls = overall_calendar_grade_class(event.get("학년", "-"))
                 selected_style = "border:2px solid #1d4ed8; box-shadow:0 0 0 2px rgba(37,99,235,.18);" if selected_exam_idx is not None and int(event["시험인덱스"]) == int(selected_exam_idx) else ""
                 course = html.escape(str(event.get("과목명", event.get("과목", ""))))
